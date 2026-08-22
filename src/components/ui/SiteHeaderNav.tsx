@@ -9,29 +9,47 @@ interface NavLink {
   label: string;
 }
 
-const LINKS: NavLink[] = [{ href: "/doctors", label: "Find a doctor" }];
+// Anchor links into the homepage's audience sections — work from any page
+// since Link does a full navigation to "/" plus the hash when not already
+// there. Deliberately not separate routes: there's one shared staff login
+// (/login) for Owner/Doctor/Front Desk, so "For Doctors"/"For Clinics"
+// pointing at distinct pages would imply a role-aware backend this app
+// doesn't have. The audience sections do that differentiation instead.
+const SECTION_LINKS: NavLink[] = [
+  { href: "/#for-patients", label: "For Patients" },
+  { href: "/#for-doctors", label: "For Doctors" },
+  { href: "/#for-clinics", label: "For Clinics" },
+  { href: "/#how-it-works", label: "How It Works" },
+];
 
-// SiteHeader (server) had no mobile treatment at all — two links that just
-// wrapped at narrow widths. This is the client-side half: a hamburger
-// toggle + slide-down panel, split out because the toggle needs local
-// state and SiteHeader itself stays a server component (it reads the
-// patient session via next/headers, which can't run in a client module).
 export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
   const accountLink: NavLink = signedIn
     ? { href: "/patient/account", label: "My account" }
     : { href: "/patient/login", label: "Patient login" };
-  const allLinks = [...LINKS, accountLink];
+  const allLinks = [...SECTION_LINKS, accountLink];
 
   return (
     <>
-      <nav aria-label="Main" className="hidden items-center gap-4 text-sm sm:flex">
-        {allLinks.map((link) => (
+      <nav aria-label="Main" className="hidden items-center gap-5 text-sm lg:flex">
+        {SECTION_LINKS.map((link) => (
           <Link key={link.href} href={link.href} className="text-muted transition-colors hover:text-foreground">
             {link.label}
           </Link>
         ))}
       </nav>
+
+      <div className="hidden items-center gap-3 lg:flex">
+        <Link href={accountLink.href} className="text-sm text-muted transition-colors hover:text-foreground">
+          {accountLink.label}
+        </Link>
+        <Link
+          href="/get-started"
+          className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          Get Started
+        </Link>
+      </div>
 
       <button
         type="button"
@@ -39,7 +57,7 @@ export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
         aria-controls="mobile-nav-panel"
         aria-label={open ? "Close menu" : "Open menu"}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-11 w-11 items-center justify-center rounded-md text-foreground transition-colors hover:bg-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:hidden"
+        className="inline-flex h-11 w-11 items-center justify-center rounded-md text-foreground transition-colors hover:bg-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
       >
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           {open ? (
@@ -53,7 +71,7 @@ export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
       <div
         id="mobile-nav-panel"
         className={cn(
-          "absolute inset-x-0 top-full border-b border-border bg-surface shadow-sm sm:hidden",
+          "absolute inset-x-0 top-full border-b border-border bg-surface shadow-sm lg:hidden",
           open ? "flex flex-col" : "hidden",
         )}
       >
@@ -67,6 +85,13 @@ export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
             {link.label}
           </Link>
         ))}
+        <Link
+          href="/get-started"
+          onClick={() => setOpen(false)}
+          className="border-t border-border px-4 py-3 text-sm font-medium text-primary hover:bg-border/40"
+        >
+          Get Started
+        </Link>
       </div>
     </>
   );

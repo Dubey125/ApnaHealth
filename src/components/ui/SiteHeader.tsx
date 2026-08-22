@@ -9,12 +9,15 @@ import { SiteHeaderNav } from "./SiteHeaderNav";
 // does not wrap children in its own container, so each page keeps its
 // existing max-width/padding. Mobile nav toggle lives in SiteHeaderNav
 // (client) since this stays a server component reading next/headers.
+// Container widened to max-w-6xl (matching AppShell's header) to fit the
+// four-audience nav without crowding — a header wider than the page's own
+// content column is a standard, common pattern, not a misalignment.
 export async function SiteHeader() {
   const session = await getPatientSession();
 
   return (
     <header className="relative border-b border-border bg-surface">
-      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link href="/" className="text-base font-semibold tracking-tight text-foreground">
           ApnaHealth
         </Link>

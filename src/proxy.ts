@@ -4,6 +4,31 @@ import { checkRateLimit } from "@/lib/rateLimit";
 
 const STAFF_COOKIE = "staff_session";
 
+// Deliberately not importing StaffRole/StaffSession from lib/auth/staff —
+// this file stays decoupled from that module (see the comment on the
+// coarse-gate check below) so only the one field actually needed here is
+// typed locally.
+interface StaffSessionPayload {
+  role: "OWNER" | "FRONT_DESK" | "DOCTOR";
+}
+
+// /app/analytics and /app/doctor each have a fixed, resource-independent
+// role requirement (unlike /app/queue/[sessionId], which additionally
+// needs a per-session DB check the page itself still performs — not
+// duplicated here, since this file deliberately never touches
+// Prisma/pg). Enforced here, before any rendering begins, because a page
+// under loading.tsx's automatic Suspense boundary can't turn its own
+// redirect() into a real HTTP redirect once streaming has started —
+// confirmed by testing: it silently falls back to a client-side
+// <meta refresh>, which doesn't leak the protected content but leaves a
+// non-browser client sitting on a 200 response. The page-level
+// requireStaffSession(role) check stays in place either way; this is
+// defense in depth; not a replacement.
+const STATIC_ROLE_ROUTES: Record<string, StaffSessionPayload["role"]> = {
+  "/app/analytics": "OWNER",
+  "/app/doctor": "DOCTOR",
+};
+
 interface RateLimitRule {
   limit: number;
   windowMs: number;
@@ -46,8 +71,12 @@ export async function proxy(request: NextRequest) {
   // Prisma/pg here at all.
   if (pathname.startsWith("/app")) {
     const token = request.cookies.get(STAFF_COOKIE)?.value;
-    const session = token ? await verifySession(token) : null;
+    const session = token ? await verifySession<StaffSessionPayload & Record<string, unknown>>(token) : null;
     if (!session) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    const requiredRole = STATIC_ROLE_ROUTES[pathname];
+    if (requiredRole && session.role !== requiredRole) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
     return NextResponse.next();
