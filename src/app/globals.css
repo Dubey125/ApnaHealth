@@ -1,13 +1,35 @@
 @import "tailwindcss";
 
+/* DESIGN_SYSTEM.md's token table. Root vars hold the raw value; @theme
+   inline maps them to Tailwind's --color-* convention (same mechanism the
+   original --background/--foreground pair already used) so they're usable
+   as bg-primary, text-muted, border-border, etc. */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --primary: #0f766e;
+  --primary-foreground: #ffffff;
+  --surface: #f8fafc;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --info: #1d4ed8;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -16,6 +38,15 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --primary: #2dd4bf;
+    --primary-foreground: #052e2b;
+    --surface: #111827;
+    --border: #27272a;
+    --muted: #a1a1aa;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #60a5fa;
   }
 }
 

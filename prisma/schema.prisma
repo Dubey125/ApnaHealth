@@ -1,0 +1,385 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// Data model contract: docs/product/DATA_MODEL.md
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StaffRole {
+  OWNER
+  FRONT_DESK
+  DOCTOR
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  OPEN
+  IN_PROGRESS
+  PAUSED
+  CLOSED
+}
+
+enum TokenSource {
+  WALK_IN
+  SELF_BOOK
+}
+
+enum TokenStatus {
+  BOOKED
+  CHECKED_IN
+  IN_CONSULT
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+enum QueueEventType {
+  TOKEN_ISSUED
+  CHECKED_IN
+  CONSULT_STARTED
+  CONSULT_ENDED
+  MARKED_NO_SHOW
+  CANCELLED
+  SESSION_OPENED
+  SESSION_PAUSED
+  SESSION_RESUMED
+  SESSION_CLOSED
+  TOKEN_REORDERED
+}
+
+enum RecordAccessAction {
+  VIEW
+  CREATE
+  UPDATE
+}
+
+model Clinic {
+  id          String   @id @default(cuid())
+  name        String
+  addressLine String
+  city        String
+  state       String
+  postalCode  String?
+  phone       String
+  timezone    String   @default("Asia/Kolkata")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  staffUsers          StaffUser[]
+  doctors             Doctor[]
+  sessions            Session[]
+  consultationRecords ConsultationRecord[]
+  recordConsents      RecordConsent[]
+  recordAccessEvents  RecordAccessEvent[]
+  auditEvents         AuditEvent[]
+}
+
+model StaffUser {
+  id           String    @id @default(cuid())
+  clinicId     String
+  clinic       Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         StaffRole
+  doctorId     String?   @unique
+  doctor       Doctor?   @relation("StaffUserDoctorProfile", fields: [doctorId], references: [id], onDelete: SetNull)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  queueEvents         QueueEvent[]
+  verifiedDoctors     Doctor[]             @relation("DoctorVerifiedBy")
+  doctorVerifications DoctorVerification[]
+  recordAccessEvents  RecordAccessEvent[]
+
+  @@index([clinicId])
+}
+
+// Cascade delete stops here: a Clinic delete cascades through StaffUser,
+// Doctor and Session, but everything below Session (Token, QueueEvent,
+// PredictionSnapshot) and everything record/audit-related (Doctor
+// verification history, consultation records, consent, access/audit
+// events) is Restrict/SetNull (Prisma's default when onDelete is
+// omitted) so real activity or history can't be deleted out from under
+// itself.
+model Doctor {
+  id                    String             @id @default(cuid())
+  clinicId              String
+  clinic                Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name                  String
+  // Public, human-readable identifier for /doctors/[slug]. DATA_MODEL.md
+  // doesn't list this field, but MVP_SPEC.md's route needs a non-internal
+  // identifier, and "internal IDs never go into public URLs" (DATA_MODEL.md)
+  // rules out using `id` directly.
+  slug                  String             @unique
+  specialty             String
+  qualificationText     String
+  registrationNumber    String?
+  registrationCouncil   String?
+  experienceYears       Int?
+  languagesText         String?
+  consultationFeeMinor  Int?
+  bio                   String?
+  photoUrl              String?
+  // Not in DATA_MODEL.md's Doctor field list, but QUEUE_RULES.md's
+  // prediction baseline explicitly requires "doctor's default consultation
+  // minutes" as its last fallback tier — added to close that gap.
+  defaultConsultMinutes Int                @default(6)
+  verificationStatus    VerificationStatus @default(PENDING)
+  verifiedAt            DateTime?          @db.Timestamptz(3)
+  verifiedByStaffUserId String?
+  verifiedByStaffUser   StaffUser?         @relation("DoctorVerifiedBy", fields: [verifiedByStaffUserId], references: [id], onDelete: SetNull)
+  verificationSource    String?
+  verificationNotes     String?
+  isActive              Boolean            @default(true)
+  createdAt             DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @db.Timestamptz(3)
+
+  staffAccount        StaffUser?           @relation("StaffUserDoctorProfile")
+  sessions            Session[]
+  verifications       DoctorVerification[]
+  consultationRecords ConsultationRecord[]
+  recordConsents      RecordConsent[]
+  recordAccessEvents  RecordAccessEvent[]
+
+  @@index([clinicId])
+  @@index([specialty])
+  @@index([clinicId, verificationStatus])
+}
+
+model DoctorVerification {
+  id                        String             @id @default(cuid())
+  doctorId                  String
+  doctor                    Doctor             @relation(fields: [doctorId], references: [id])
+  checkedByStaffUserId      String
+  checkedByStaffUser        StaffUser          @relation(fields: [checkedByStaffUserId], references: [id])
+  status                    VerificationStatus
+  registrationNumberChecked String
+  sourceName                String
+  sourceReference           String?
+  checkedAt                 DateTime           @db.Timestamptz(3)
+  notes                     String?
+
+  @@index([doctorId, checkedAt])
+}
+
+model Session {
+  id       String @id @default(cuid())
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId String
+  doctor   Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  // Public identifier for /book/[sessionId] (linked from the public doctor
+  // profile page) — same reasoning as Doctor.slug: DATA_MODEL.md's "internal
+  // IDs never go into public URLs" rules out routing on `id` directly.
+  // 21-char nanoid, generated in application code, same pattern as
+  // Token.publicId.
+  publicId       String        @unique
+  sessionDate    DateTime      @db.Timestamptz(3)
+  plannedStartAt DateTime      @db.Timestamptz(3)
+  plannedEndAt   DateTime      @db.Timestamptz(3)
+  locationLabel  String
+  status         SessionStatus @default(SCHEDULED)
+  actualStartAt  DateTime?     @db.Timestamptz(3)
+  actualEndAt    DateTime?     @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  tokens              Token[]
+  queueEvents         QueueEvent[]
+  predictionSnapshots PredictionSnapshot[]
+  scheduledBreaks     SessionBreak[]
+
+  @@index([clinicId])
+  @@index([doctorId])
+}
+
+// A planned, known-in-advance block of time (e.g. a fixed lunch break)
+// during which the doctor is not consulting. Distinct from PAUSED session
+// status: a pause is an unplanned, open-ended interruption handled by the
+// existing pause/resume mechanism; a SessionBreak has a known startAt/endAt
+// the prediction engine can schedule around in advance.
+model SessionBreak {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id])
+  startAt   DateTime @db.Timestamptz(3)
+  endAt     DateTime @db.Timestamptz(3)
+  reason    String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([sessionId, startAt])
+}
+
+model Token {
+  id                   String      @id @default(cuid())
+  sessionId            String
+  session              Session     @relation(fields: [sessionId], references: [id])
+  publicId             String      @unique
+  tokenNumber          Int
+  patientId            String?
+  patient              Patient?    @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  patientNameSnapshot  String
+  patientPhoneSnapshot String
+  source               TokenSource
+  status               TokenStatus @default(BOOKED)
+  issuedAt             DateTime    @default(now()) @db.Timestamptz(3)
+  checkedInAt          DateTime?   @db.Timestamptz(3)
+  consultStartedAt     DateTime?   @db.Timestamptz(3)
+  consultEndedAt       DateTime?   @db.Timestamptz(3)
+  createdAt            DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime    @updatedAt @db.Timestamptz(3)
+
+  queueEvents         QueueEvent[]
+  predictionSnapshots PredictionSnapshot[]
+  consultationRecords ConsultationRecord[]
+  recordConsents      RecordConsent[]
+
+  @@unique([sessionId, tokenNumber])
+  @@index([sessionId, status])
+  @@index([patientId])
+}
+
+// Patients are not clinic-scoped: one patient account can hold tickets
+// and records across multiple clinics.
+model Patient {
+  id           String    @id @default(cuid())
+  name         String
+  phone        String    @unique
+  email        String?   @unique
+  passwordHash String
+  dateOfBirth  DateTime? @db.Date
+  sex          String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  tokens              Token[]
+  consultationRecords ConsultationRecord[]
+  recordConsents      RecordConsent[]
+  recordAccessEvents  RecordAccessEvent[]
+}
+
+model ConsultationRecord {
+  id                   String   @id @default(cuid())
+  patientId            String
+  patient              Patient  @relation(fields: [patientId], references: [id])
+  doctorId             String
+  doctor               Doctor   @relation(fields: [doctorId], references: [id])
+  clinicId             String
+  clinic               Clinic   @relation(fields: [clinicId], references: [id])
+  tokenId              String?
+  token                Token?   @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  consultedAt          DateTime @db.Timestamptz(3)
+  chiefComplaint       String?
+  clinicalAssessment   String?
+  diagnosisText        String?
+  prescriptionText     String?
+  followUpInstructions String?
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([patientId, consultedAt])
+  @@index([doctorId, consultedAt])
+}
+
+model RecordConsent {
+  id        String    @id @default(cuid())
+  patientId String
+  patient   Patient   @relation(fields: [patientId], references: [id])
+  doctorId  String
+  doctor    Doctor    @relation(fields: [doctorId], references: [id])
+  clinicId  String
+  clinic    Clinic    @relation(fields: [clinicId], references: [id])
+  tokenId   String?
+  token     Token?    @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  grantedAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  scope     String
+
+  @@index([patientId, doctorId])
+}
+
+// Append-only audit trail of medical record access.
+model RecordAccessEvent {
+  id          String             @id @default(cuid())
+  patientId   String
+  patient     Patient            @relation(fields: [patientId], references: [id])
+  clinicId    String
+  clinic      Clinic             @relation(fields: [clinicId], references: [id])
+  doctorId    String?
+  doctor      Doctor?            @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  staffUserId String?
+  staffUser   StaffUser?         @relation(fields: [staffUserId], references: [id], onDelete: SetNull)
+  action      RecordAccessAction
+  reason      String?
+  occurredAt  DateTime           @db.Timestamptz(3)
+  metadata    Json?
+
+  @@index([patientId, occurredAt])
+}
+
+model QueueEvent {
+  id               String         @id @default(cuid())
+  sessionId        String
+  session          Session        @relation(fields: [sessionId], references: [id])
+  tokenId          String?
+  token            Token?         @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  actorStaffUserId String?
+  actorStaffUser   StaffUser?     @relation(fields: [actorStaffUserId], references: [id], onDelete: SetNull)
+  type             QueueEventType
+  occurredAt       DateTime       @db.Timestamptz(3)
+  metadata         Json?
+
+  @@index([sessionId, occurredAt])
+}
+
+model PredictionSnapshot {
+  id                   String   @id @default(cuid())
+  tokenId              String
+  token                Token    @relation(fields: [tokenId], references: [id])
+  sessionId            String
+  session              Session  @relation(fields: [sessionId], references: [id])
+  modelVersion         String
+  predictedStartAt     DateTime @db.Timestamptz(3)
+  windowStartAt        DateTime @db.Timestamptz(3)
+  windowEndAt          DateTime @db.Timestamptz(3)
+  tokensAhead          Int
+  medianServiceSeconds Int
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([tokenId, createdAt])
+}
+
+// General system audit log (distinct from the medical-record-specific
+// RecordAccessEvent and the queue-specific QueueEvent). actorUserId is
+// intentionally not a foreign key: the actor may be a StaffUser or a
+// Patient, and DATA_MODEL.md does not specify which.
+model AuditEvent {
+  id          String   @id @default(cuid())
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id])
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  occurredAt  DateTime @db.Timestamptz(3)
+  metadata    Json?
+
+  @@index([clinicId, occurredAt])
+}
