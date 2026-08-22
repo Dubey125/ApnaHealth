@@ -39,7 +39,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     <main className="mx-auto flex max-w-4xl flex-col gap-6 p-4 sm:p-6">
       <PageHeader title="Analytics" />
 
-      <form className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-4">
+      <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-4">
         <Label htmlFor="analytics-from">
           From
           <Input id="analytics-from" type="date" name="from" defaultValue={fromValue} />

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { clinicDayBounds } from "@/lib/clinicDay";
 import { formatClinicTime, formatDurationMinutes, formatPercent } from "@/lib/format";
 import { DoneCallNextButton } from "@/app/app/queue/[sessionId]/DoneCallNextButton";
+import { PollingRefresher } from "@/components/PollingRefresher";
 import { buildClinicReport } from "@/lib/analytics/report";
 import { parseReportRange } from "@/lib/analytics/range";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -41,10 +42,25 @@ export default async function DoctorDashboardPage() {
   // limited, unlike Owner's full clinic-wide /app/analytics) — scoped to
   // this doctor only, fixed to the last 30 days, no CSV export.
   const report = await buildClinicReport(session.clinicId, parseReportRange(null, null), session.doctorId);
+  const now = new Date();
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-8 p-4 sm:p-6">
-      <PageHeader title="Today's sessions" />
+      {/* This page showed live "current patient" data with no way to see
+          it change short of a manual reload — the front-desk console
+          (same underlying data) already polls; this didn't. Real gap,
+          fixed here rather than left inconsistent. */}
+      {activeSessions.length > 0 && <PollingRefresher />}
+      <PageHeader
+        title="Today's sessions"
+        action={
+          activeSessions.length > 0 ? (
+            <p className="text-xs text-muted" role="status" aria-live="polite">
+              Updated {formatClinicTime(now)}
+            </p>
+          ) : undefined
+        }
+      />
 
       {activeSessions.length === 0 ? (
         <EmptyState title="No active session right now" description="Sessions you're running today will appear here once they open." />

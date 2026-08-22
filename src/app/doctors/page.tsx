@@ -2,10 +2,12 @@ import Link from "next/link";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { SiteHeader } from "@/components/ui/SiteHeader";
+import { Footer } from "@/components/ui/Footer";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
+import { formatFeeMinor } from "@/lib/format";
 
 const filtersSchema = z.object({
   specialty: z.string().trim().min(1).optional(),
@@ -50,7 +52,7 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight">Find a doctor</h1>
 
-        <form method="GET" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <form method="GET" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <Input name="name" defaultValue={filters.name} placeholder="Doctor name" className="sm:w-48" />
           <Input name="specialty" defaultValue={filters.specialty} placeholder="Specialty" className="sm:w-48" />
           <Input name="city" defaultValue={filters.city} placeholder="City" className="sm:w-40" />
@@ -60,6 +62,14 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
           >
             Search
           </button>
+          {hasFilters && (
+            <Link
+              href="/doctors"
+              className="inline-flex h-11 items-center text-sm text-muted underline underline-offset-2 hover:text-foreground"
+            >
+              Clear filters
+            </Link>
+          )}
         </form>
 
         {doctors.length === 0 ? (
@@ -83,6 +93,9 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
                     <span className="text-sm text-muted">
                       {doctor.clinic.name} · {doctor.clinic.city}
                     </span>
+                    {doctor.consultationFeeMinor != null && (
+                      <span className="text-sm text-muted">{formatFeeMinor(doctor.consultationFeeMinor)} consultation</span>
+                    )}
                   </Card>
                 </Link>
               </li>
@@ -90,6 +103,7 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
           </ul>
         )}
       </main>
+      <Footer />
     </>
   );
 }

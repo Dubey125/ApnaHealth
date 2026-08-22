@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { SiteHeader } from "@/components/ui/SiteHeader";
+import { Footer } from "@/components/ui/Footer";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
@@ -41,6 +42,10 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
     <>
       <SiteHeader />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
+        <Link href="/doctors" className="inline-flex w-fit items-center gap-1 text-sm text-muted hover:text-foreground">
+          ← Back to search
+        </Link>
+
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{doctor.name}</h1>
@@ -105,6 +110,7 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
           )}
         </div>
       </main>
+      <Footer />
     </>
   );
 }

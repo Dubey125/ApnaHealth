@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Badge } from "@/components/ui/Badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/Table";
 
 export default async function StaffDoctorsPage() {
@@ -36,6 +37,11 @@ export default async function StaffDoctorsPage() {
                   <Link href={`/app/doctors/${doctor.id}`} className="text-primary underline underline-offset-2">
                     {doctor.name}
                   </Link>
+                  {!doctor.isActive && (
+                    <Badge variant="neutral" className="ml-2">
+                      Inactive
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted">{doctor.specialty}</TableCell>
                 <TableCell>

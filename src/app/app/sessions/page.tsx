@@ -9,6 +9,8 @@ import { SessionStatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Card } from "@/components/ui/Card";
 
+const SESSIONS_PAGE_SIZE = 20;
+
 // Widened from OWNER-only to also allow FRONT_DESK: ACCESS_MATRIX.md
 // already grants front desk "Manage queue" on their own clinic's
 // sessions (enforced per-session by loadSessionForStaff), but there was
@@ -31,7 +33,7 @@ export default async function StaffSessionsPage() {
       where: { clinicId: session.clinicId },
       include: { doctor: { select: { name: true } } },
       orderBy: { sessionDate: "desc" },
-      take: 20,
+      take: SESSIONS_PAGE_SIZE,
     }),
   ]);
 
@@ -44,28 +46,33 @@ export default async function StaffSessionsPage() {
       {sessions.length === 0 ? (
         <EmptyState title="No sessions yet" description={isOwner ? "Create one above to get started." : "Ask the clinic owner to schedule a session."} />
       ) : (
-        <ul className="flex flex-col gap-2">
-          {sessions.map((s) => (
-            <li key={s.id}>
-              <Card className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <div>
-                  <div className="font-medium text-foreground">{s.doctor.name}</div>
-                  <div className="text-muted">
-                    {formatClinicDate(s.sessionDate)} · {formatClinicTime(s.plannedStartAt)} –{" "}
-                    {formatClinicTime(s.plannedEndAt)} · {s.locationLabel}
+        <>
+          <ul className="flex flex-col gap-2">
+            {sessions.map((s) => (
+              <li key={s.id}>
+                <Card className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <div>
+                    <div className="font-medium text-foreground">{s.doctor.name}</div>
+                    <div className="text-muted">
+                      {formatClinicDate(s.sessionDate)} · {formatClinicTime(s.plannedStartAt)} –{" "}
+                      {formatClinicTime(s.plannedEndAt)} · {s.locationLabel}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <SessionStatusBadge status={s.status} />
+                      <Link href={`/app/queue/${s.id}`} className="text-sm text-primary underline underline-offset-2">
+                        Manage queue
+                      </Link>
+                    </div>
                   </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <SessionStatusBadge status={s.status} />
-                    <Link href={`/app/queue/${s.id}`} className="text-sm text-primary underline underline-offset-2">
-                      Manage queue
-                    </Link>
-                  </div>
-                </div>
-                <TransitionButtons sessionId={s.id} status={s.status} returnTo="/app/sessions" />
-              </Card>
-            </li>
-          ))}
-        </ul>
+                  <TransitionButtons sessionId={s.id} status={s.status} returnTo="/app/sessions" />
+                </Card>
+              </li>
+            ))}
+          </ul>
+          {sessions.length === SESSIONS_PAGE_SIZE && (
+            <p className="text-xs text-muted">Showing the most recent {SESSIONS_PAGE_SIZE} sessions.</p>
+          )}
+        </>
       )}
     </main>
   );

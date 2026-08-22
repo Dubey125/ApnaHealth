@@ -69,7 +69,12 @@ export default async function QueuePage({ params }: QueuePageProps) {
             <SessionStatusBadge status={clinicSession.status} />
           </div>
         </div>
-        <TransitionButtons sessionId={clinicSession.id} status={clinicSession.status} returnTo="queue" />
+        <div className="flex flex-col items-end gap-1">
+          <TransitionButtons sessionId={clinicSession.id} status={clinicSession.status} returnTo="queue" />
+          <p className="text-xs text-muted" role="status" aria-live="polite">
+            Updated {formatClinicTime(now)}
+          </p>
+        </div>
       </div>
 
       {activeBreak && (

@@ -50,7 +50,20 @@ export default async function TicketPage({ params }: TicketPageProps) {
   }
 
   const cancellable = token.status === "BOOKED" || token.status === "CHECKED_IN";
-  const prediction = cancellable ? await computeAndSnapshotPrediction(token.id) : null;
+  const [prediction, nowServing] = await Promise.all([
+    cancellable ? computeAndSnapshotPrediction(token.id) : Promise.resolve(null),
+    // Only the current token's number, never a name or phone — same
+    // no-other-patient-PII boundary the rest of this page already
+    // respects (QUEUE_RULES.md).
+    cancellable
+      ? prisma.token.findFirst({ where: { sessionId: token.sessionId, status: "IN_CONSULT" }, select: { tokenNumber: true } })
+      : Promise.resolve(null),
+  ]);
+  // Captured once, after every query above has resolved, so it reflects
+  // when this data actually became stale — not when the request started.
+  // Each poll (PollingRefresher) re-runs this whole server component, so
+  // this naturally advances on its own with no client-side clock needed.
+  const lastUpdatedAt = new Date();
 
   return (
     <>
@@ -81,6 +94,13 @@ export default async function TicketPage({ params }: TicketPageProps) {
 
         {prediction && (
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 text-center">
+            {nowServing && (
+              <div className="flex items-center justify-center gap-1.5 text-sm text-muted">
+                <span>Now serving</span>
+                <span className="font-semibold tabular-nums text-foreground">#{nowServing.tokenNumber}</span>
+              </div>
+            )}
+
             {prediction.tokensAhead > 0 ? (
               <div>
                 <div className="text-3xl font-bold tabular-nums text-foreground">{prediction.tokensAhead}</div>
@@ -107,6 +127,12 @@ export default async function TicketPage({ params }: TicketPageProps) {
             The doctor has a scheduled break from {formatClinicTime(prediction.relevantBreak.startAt)} to{" "}
             {formatClinicTime(prediction.relevantBreak.endAt)}. Your estimate above already accounts for it.
           </Alert>
+        )}
+
+        {cancellable && (
+          <p className="text-center text-xs text-muted" role="status" aria-live="polite">
+            Last updated {formatClinicTime(lastUpdatedAt)} · this page updates on its own
+          </p>
         )}
 
         {cancellable && <CancelButton publicId={token.publicId} />}
