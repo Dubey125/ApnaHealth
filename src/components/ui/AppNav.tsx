@@ -19,12 +19,15 @@ const LINKS_BY_ROLE: Record<StaffRole, NavLink[]> = {
     { href: "/app/doctors", label: "Doctors" },
     { href: "/app/sessions", label: "Sessions" },
     { href: "/app/staff", label: "Staff" },
+    { href: "/app/clinic", label: "Clinic profile" },
     { href: "/app/analytics", label: "Analytics" },
     { href: "/app/audit", label: "Audit log" },
   ],
   DOCTOR: [
     { href: "/app", label: "Home" },
     { href: "/app/doctor", label: "Today's sessions" },
+    { href: "/app/doctor/schedule", label: "My schedule" },
+    { href: "/app/doctor/profile", label: "My profile" },
   ],
   FRONT_DESK: [
     { href: "/app", label: "Home" },
@@ -36,10 +39,19 @@ export function AppNav({ role }: { role: StaffRole }) {
   const pathname = usePathname();
   const links = LINKS_BY_ROLE[role];
 
+  // Longest-matching href wins rather than a plain startsWith per link:
+  // with nested routes like /app/doctor and /app/doctor/schedule both in
+  // the same list, a naive startsWith would highlight both at once on
+  // /app/doctor/schedule. A match requires an exact match or a "/"
+  // boundary, so /app/doctors never matches pathname /app/doctor either.
+  const activeHref = links
+    .filter((link) => pathname === link.href || pathname.startsWith(`${link.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   return (
     <nav aria-label="Main" className="flex flex-wrap items-center gap-1 text-sm">
       {links.map((link) => {
-        const active = link.href === "/app" ? pathname === "/app" : pathname.startsWith(link.href);
+        const active = link.href === activeHref;
         return (
           <Link
             key={link.href}

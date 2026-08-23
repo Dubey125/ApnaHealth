@@ -27,6 +27,8 @@ interface StaffSessionPayload {
 const STATIC_ROLE_ROUTES: Record<string, StaffSessionPayload["role"]> = {
   "/app/analytics": "OWNER",
   "/app/doctor": "DOCTOR",
+  "/app/doctor/schedule": "DOCTOR",
+  "/app/doctor/profile": "DOCTOR",
 };
 
 interface RateLimitRule {

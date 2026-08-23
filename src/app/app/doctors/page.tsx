@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireStaffSession } from "@/lib/auth/staff";
 import { prisma } from "@/lib/db";
+import { DoctorForm } from "./DoctorForm";
+import { CreatedToast } from "./CreatedToast";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -17,7 +19,10 @@ export default async function StaffDoctorsPage() {
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-4 sm:p-6">
+      <CreatedToast />
       <PageHeader title="Doctors" />
+
+      <DoctorForm />
 
       {doctors.length === 0 ? (
         <EmptyState title="No doctors yet" />

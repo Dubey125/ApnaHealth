@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireStaffSession } from "@/lib/auth/staff";
 import { prisma } from "@/lib/db";
 import { StaffForm } from "./StaffForm";
@@ -45,7 +46,9 @@ export default async function StaffPage() {
           {staff.map((s) => (
             <TableRow key={s.id}>
               <TableCell className="font-medium text-foreground">
-                {s.name}
+                <Link href={`/app/staff/${s.id}`} className="text-primary underline underline-offset-2">
+                  {s.name}
+                </Link>
                 {s.doctor && <div className="text-xs text-muted">{s.doctor.name}</div>}
               </TableCell>
               <TableCell className="text-muted">{s.email}</TableCell>

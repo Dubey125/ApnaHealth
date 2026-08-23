@@ -6,6 +6,7 @@ import { Footer } from "@/components/ui/Footer";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
+import { Avatar } from "@/components/ui/Avatar";
 import { formatClinicDate, formatClinicTime, formatFeeMinor } from "@/lib/format";
 
 interface DoctorProfilePageProps {
@@ -46,24 +47,27 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
           ← Back to search
         </Link>
 
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">{doctor.name}</h1>
-            {doctor.verificationStatus === "VERIFIED" && (
-              <VerificationStatusBadge status={doctor.verificationStatus} />
+        <div className="flex gap-4">
+          <Avatar name={doctor.name} photoUrl={doctor.photoUrl} size={72} className="shrink-0" />
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">{doctor.name}</h1>
+              {doctor.verificationStatus === "VERIFIED" && (
+                <VerificationStatusBadge status={doctor.verificationStatus} />
+              )}
+            </div>
+            <p className="text-base text-foreground">{doctor.specialty}</p>
+            <p className="text-sm text-muted">{doctor.qualificationText}</p>
+            {doctor.experienceYears != null && (
+              <p className="text-sm text-muted">{doctor.experienceYears} years experience</p>
+            )}
+            {doctor.languagesText && <p className="text-sm text-muted">Speaks: {doctor.languagesText}</p>}
+            {doctor.consultationFeeMinor != null && (
+              <p className="text-sm text-muted">Consultation fee: {formatFeeMinor(doctor.consultationFeeMinor)}</p>
             )}
           </div>
-          <p className="text-base text-foreground">{doctor.specialty}</p>
-          <p className="text-sm text-muted">{doctor.qualificationText}</p>
-          {doctor.experienceYears != null && (
-            <p className="text-sm text-muted">{doctor.experienceYears} years experience</p>
-          )}
-          {doctor.languagesText && <p className="text-sm text-muted">Speaks: {doctor.languagesText}</p>}
-          {doctor.consultationFeeMinor != null && (
-            <p className="text-sm text-muted">Consultation fee: {formatFeeMinor(doctor.consultationFeeMinor)}</p>
-          )}
-          {doctor.bio && <p className="mt-2 text-sm text-foreground">{doctor.bio}</p>}
         </div>
+        {doctor.bio && <p className="text-sm text-foreground">{doctor.bio}</p>}
 
         <Card>
           <h2 className="text-lg font-medium">{doctor.clinic.name}</h2>
