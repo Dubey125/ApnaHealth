@@ -1,7 +1,24 @@
 # Data Model Contract
 
 ## Clinic
-id, name, addressLine, city, state, postalCode?, phone, timezone, isActive, createdAt, updatedAt
+id, name, facilityType CLINIC|HOSPITAL, addressLine, areaLabel?, city, state, postalCode?, phone, timezone, isActive, createdAt, updatedAt
+
+`facilityType` and `areaLabel` are additions to the original contract, both
+on Clinic rather than on new tables:
+
+- `facilityType` — a hospital is the same facility record as a clinic at a
+  different scale, sharing every relation (doctors, sessions, staff, queue,
+  records). A parallel Hospital table would have duplicated all seven of
+  them; a discriminator field does not. Defaults to CLINIC, so every row
+  predating the field is already correct with no backfill.
+- `areaLabel` — locality/neighbourhood, the unit people actually search by
+  in Indian cities. `city` alone is too coarse in a metro, and matching on
+  the free-text `addressLine` is too specific. Nullable because it is
+  genuinely unrecorded for existing rows.
+
+Geographic coordinates were deliberately NOT added: a latitude/longitude
+pair is only useful with radius search built on top of it, and adding
+columns nothing reads yet would be speculative schema.
 
 ## StaffUser
 id, clinicId, name, email unique, passwordHash, role OWNER|FRONT_DESK|DOCTOR, doctorId?, isActive, createdAt, updatedAt

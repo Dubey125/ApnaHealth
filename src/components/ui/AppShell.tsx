@@ -1,13 +1,16 @@
 import type { ReactNode } from "react";
 import type { StaffRole } from "@/generated/prisma/enums";
-import { AppNav } from "./AppNav";
+import { AppSidebar } from "./AppSidebar";
 
-// The persistent header/nav that PHASE-12's audit found completely
-// missing under /app — every page was previously a bare <main> with no
-// way to navigate except a raw URL. Deliberately does not add its own
-// max-width/padding wrapper around children: each page keeps controlling
-// its own inner layout (mx-auto max-w-* p-*), unchanged, so this can be
-// wired in without touching page content — that's PHASE-13 onward.
+// The staff workspace chrome: a persistent sidebar on desktop, a slide-over
+// drawer on mobile. AppSidebar renders both affordances itself (the rail is
+// `hidden lg:flex`, the top bar is `lg:hidden`), so it is mounted once here
+// and the container just switches axis at the same breakpoint.
+//
+// Deliberately does not impose its own max-width or padding on children:
+// every page under /app already controls its own inner layout
+// (mx-auto max-w-* p-*), which now centres inside the content column
+// rather than the full viewport.
 export function AppShell({
   role,
   clinicName,
@@ -18,17 +21,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">{clinicName}</span>
-            <span className="rounded-full bg-border/60 px-2 py-0.5 text-xs text-muted">{role.replace("_", " ")}</span>
-          </div>
-          <AppNav role={role} />
-        </div>
-      </header>
-      <div className="flex-1">{children}</div>
+    <div className="flex min-h-screen flex-col bg-background lg:flex-row">
+      <AppSidebar role={role} clinicName={clinicName} />
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }

@@ -11,7 +11,9 @@ export interface UpdateClinicState {
 
 const updateClinicSchema = z.object({
   name: z.string().trim().min(1),
+  facilityType: z.enum(["CLINIC", "HOSPITAL"]),
   addressLine: z.string().trim().min(1),
+  areaLabel: z.string().trim().min(1).optional(),
   city: z.string().trim().min(1),
   state: z.string().trim().min(1),
   postalCode: z.string().trim().min(1).optional(),
@@ -27,14 +29,16 @@ export async function updateClinic(_prevState: UpdateClinicState, formData: Form
 
   const parsed = updateClinicSchema.safeParse({
     name: formData.get("name"),
+    facilityType: formData.get("facilityType"),
     addressLine: formData.get("addressLine"),
+    areaLabel: formData.get("areaLabel") || undefined,
     city: formData.get("city"),
     state: formData.get("state"),
     postalCode: formData.get("postalCode") || undefined,
     phone: formData.get("phone"),
   });
   if (!parsed.success) {
-    return { error: "Enter a clinic name, address, city, state and phone number." };
+    return { error: "Enter a facility name and type, address, city, state and phone number." };
   }
 
   const now = new Date();
@@ -43,7 +47,9 @@ export async function updateClinic(_prevState: UpdateClinicState, formData: Form
       where: { id: session.clinicId },
       data: {
         name: parsed.data.name,
+        facilityType: parsed.data.facilityType,
         addressLine: parsed.data.addressLine,
+        areaLabel: parsed.data.areaLabel ?? null,
         city: parsed.data.city,
         state: parsed.data.state,
         postalCode: parsed.data.postalCode ?? null,

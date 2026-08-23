@@ -66,18 +66,34 @@ enum RecordAccessAction {
   UPDATE
 }
 
+// A hospital is not a separate entity from a clinic — it is the same
+// facility record (address, doctors, sessions, queue, staff) at a
+// different scale. Modelled as a field on Clinic rather than a parallel
+// Hospital table so none of the seven relations hanging off Clinic have to
+// be duplicated: the same reasoning that kept "appointment" as a view of
+// Token instead of its own table.
+enum FacilityType {
+  CLINIC
+  HOSPITAL
+}
+
 model Clinic {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   name        String
+  facilityType FacilityType @default(CLINIC)
   addressLine String
+  // Locality / neighbourhood ("Koregaon Park"), the unit people actually
+  // search by in Indian cities — city alone is too coarse in a metro and
+  // the full addressLine is too specific to match on.
+  areaLabel   String?
   city        String
   state       String
   postalCode  String?
   phone       String
-  timezone    String   @default("Asia/Kolkata")
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  timezone    String       @default("Asia/Kolkata")
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
 
   staffUsers          StaffUser[]
   doctors             Doctor[]

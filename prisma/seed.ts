@@ -60,6 +60,7 @@ async function main() {
     data: {
       name: SEEDED_CLINIC_NAME,
       addressLine: "12 MG Road",
+      areaLabel: "Koregaon Park",
       city: "Pune",
       state: "Maharashtra",
       postalCode: "411001",

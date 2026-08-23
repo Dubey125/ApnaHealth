@@ -52,6 +52,20 @@ export async function createConsultationRecord(
     return { error: "A record already exists for this visit." };
   }
 
+  // Every field is individually optional, but a record with none of them
+  // filled in is a permanent, uneditable, empty clinical entry (there is
+  // no update capability in this MVP) — worse than no record at all.
+  const hasContent = [
+    parsed.data.chiefComplaint,
+    parsed.data.clinicalAssessment,
+    parsed.data.diagnosisText,
+    parsed.data.prescriptionText,
+    parsed.data.followUpInstructions,
+  ].some((value) => emptyToUndefined(value) !== undefined);
+  if (!hasContent) {
+    return { error: "Record at least one detail before saving — this cannot be edited afterwards." };
+  }
+
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     await tx.consultationRecord.create({

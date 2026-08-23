@@ -14,7 +14,11 @@ import { formatClinicDate, formatClinicTime, formatFeeMinor } from "@/lib/format
 const filtersSchema = z.object({
   specialty: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1).optional(),
+  // Matched against city OR areaLabel, so "Pune" and "Koregaon Park" both
+  // work from the same box rather than forcing the patient to know which
+  // level of granularity the clinic happened to record.
   city: z.string().trim().min(1).optional(),
+  facility: z.enum(["CLINIC", "HOSPITAL"]).optional(),
 });
 
 interface DoctorsPageProps {
@@ -47,18 +51,29 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
     specialty: firstValue(rawParams.specialty),
     name: firstValue(rawParams.name),
     city: firstValue(rawParams.city),
+    facility: firstValue(rawParams.facility),
   });
-  const hasFilters = Boolean(filters.name || filters.specialty || filters.city);
+  const hasFilters = Boolean(filters.name || filters.specialty || filters.city || filters.facility);
+
+  const locationWhere = filters.city
+    ? {
+        OR: [
+          { city: { contains: filters.city, mode: "insensitive" as const } },
+          { areaLabel: { contains: filters.city, mode: "insensitive" as const } },
+        ],
+      }
+    : {};
 
   const listedDoctorWhere = { isActive: true, clinic: { isActive: true } } as const;
 
-  const [doctors, specialtyGroups, cityRows] = await Promise.all([
+  const [doctors, specialtyGroups, cityRows, clinicDoctorCount, hospitalDoctorCount] = await Promise.all([
     prisma.doctor.findMany({
       where: {
         ...listedDoctorWhere,
         clinic: {
           isActive: true,
-          ...(filters.city ? { city: { contains: filters.city, mode: "insensitive" } } : {}),
+          ...(filters.facility ? { facilityType: filters.facility } : {}),
+          ...locationWhere,
         },
         ...(filters.specialty ? { specialty: { contains: filters.specialty, mode: "insensitive" } } : {}),
         ...(filters.name ? { name: { contains: filters.name, mode: "insensitive" } } : {}),
@@ -81,6 +96,11 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
       select: { city: true },
       orderBy: { city: "asc" },
     }),
+    // Doctor counts per facility type. Counting doctors (not facilities)
+    // because that is what the list below shows — a "Hospitals 0" chip
+    // that still had hospitals but no listed doctors would be misleading.
+    prisma.doctor.count({ where: { isActive: true, clinic: { isActive: true, facilityType: "CLINIC" } } }),
+    prisma.doctor.count({ where: { isActive: true, clinic: { isActive: true, facilityType: "HOSPITAL" } } }),
   ]);
 
   // "Next available" per doctor — the soonest session still ahead of us,
@@ -131,7 +151,8 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
           <form method="GET" className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center">
             <Input name="name" defaultValue={filters.name} placeholder="Doctor name" className="sm:flex-1" />
             <Input name="specialty" defaultValue={filters.specialty} placeholder="Specialty" className="sm:flex-1" />
-            <Input name="city" defaultValue={filters.city} placeholder="City" className="sm:w-40" />
+            <Input name="city" defaultValue={filters.city} placeholder="City or area" className="sm:w-44" />
+            {filters.facility && <input type="hidden" name="facility" value={filters.facility} />}
             <button
               type="submit"
               className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
@@ -140,6 +161,30 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
             </button>
           </form>
         </div>
+
+        {/* Only worth showing when both kinds actually exist — a lone
+            "Clinics" chip filters nothing. */}
+        {clinicDoctorCount > 0 && hospitalDoctorCount > 0 && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Clinics or hospitals</h2>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ["CLINIC", "Clinics", clinicDoctorCount],
+                ["HOSPITAL", "Hospitals", hospitalDoctorCount],
+              ] as const).map(([value, label, count]) => {
+                const active = filters.facility === value;
+                return (
+                  <FilterChip key={value} active={active} href={active ? "/doctors" : `/doctors?facility=${value}`}>
+                    {label}
+                    <span className={cn("tabular-nums", active ? "text-primary-foreground/70" : "text-muted/70")}>
+                      {count}
+                    </span>
+                  </FilterChip>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {specialtyGroups.length > 0 && (
           <div className="flex flex-col gap-3">
@@ -225,7 +270,12 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
 
                         <div className="flex flex-col gap-0.5 text-sm text-muted">
                           <span>
-                            {doctor.clinic.name} · {doctor.clinic.city}
+                            {doctor.clinic.name}
+                            {doctor.clinic.facilityType === "HOSPITAL" && " · Hospital"}
+                          </span>
+                          <span>
+                            {doctor.clinic.areaLabel ? `${doctor.clinic.areaLabel}, ` : ""}
+                            {doctor.clinic.city}
                           </span>
                           {doctor.consultationFeeMinor != null && (
                             <span>{formatFeeMinor(doctor.consultationFeeMinor)} consultation</span>

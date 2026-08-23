@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { cn } from "./cn";
 
 interface NavLink {
@@ -37,20 +38,41 @@ const PATIENT_LINKS: NavLink[] = [
 
 export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
   const accountLink: NavLink = signedIn
     ? { href: "/patient/account", label: "My account" }
     : { href: "/patient/login", label: "Patient login" };
   const sectionLinks = signedIn ? PATIENT_LINKS : SECTION_LINKS;
   const allLinks = [...sectionLinks, accountLink];
 
+  // Only the signed-in product links get an active state — the signed-out
+  // set are homepage anchors (/#for-patients), which are all the same
+  // route and would otherwise all highlight at once on "/".
+  const activeHref = signedIn
+    ? sectionLinks
+        .filter((l) => pathname === l.href || pathname.startsWith(`${l.href}/`))
+        .sort((a, b) => b.href.length - a.href.length)[0]?.href
+    : undefined;
+
   return (
     <>
       <nav aria-label="Main" className="hidden items-center gap-5 text-sm lg:flex">
-        {sectionLinks.map((link) => (
-          <Link key={link.href} href={link.href} className="text-muted transition-colors hover:text-foreground">
-            {link.label}
-          </Link>
-        ))}
+        {sectionLinks.map((link) => {
+          const active = link.href === activeHref;
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "transition-colors",
+                active ? "font-medium text-primary" : "text-muted hover:text-foreground",
+              )}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
       </nav>
 
       <div className="hidden items-center gap-3 lg:flex">

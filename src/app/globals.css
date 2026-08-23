@@ -60,6 +60,18 @@ body {
   font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* Keeps page content clear of the signed-in patient's fixed bottom tab
+   bar without every patient page needing its own padding class. Keyed off
+   the bar's presence, so it applies exactly when the bar is rendered and
+   never for signed-out visitors or staff pages. Matches the bar's own
+   `lg:hidden` breakpoint. In a browser without :has() support the only
+   consequence is that the last row of content sits under the bar. */
+@media (max-width: 1023px) {
+  body:has(#patient-tab-bar) {
+    padding-bottom: 4.5rem;
+  }
+}
+
 /* Respect a reader's reduced-motion preference for the one automatic
    animation in the app (the live "now serving" pulse on the queue
    tracker) — DESIGN_SYSTEM.md otherwise allows no auto-playing motion. */

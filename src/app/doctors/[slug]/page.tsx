@@ -150,11 +150,18 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
         </div>
 
         <div className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">Clinic</h2>
+          <h2 className="text-lg font-semibold tracking-tight">
+            {doctor.clinic.facilityType === "HOSPITAL" ? "Hospital" : "Clinic"}
+          </h2>
           <Card className="flex flex-col gap-1">
-            <span className="font-medium text-foreground">{doctor.clinic.name}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-foreground">{doctor.clinic.name}</span>
+              {doctor.clinic.facilityType === "HOSPITAL" && <Badge variant="info">Hospital</Badge>}
+            </div>
             <span className="text-sm text-muted">
-              {doctor.clinic.addressLine}, {doctor.clinic.city}, {doctor.clinic.state}
+              {doctor.clinic.addressLine}
+              {doctor.clinic.areaLabel ? `, ${doctor.clinic.areaLabel}` : ""}, {doctor.clinic.city},{" "}
+              {doctor.clinic.state}
               {doctor.clinic.postalCode ? ` ${doctor.clinic.postalCode}` : ""}
             </span>
             <a href={`tel:${doctor.clinic.phone}`} className="text-sm text-primary underline underline-offset-2">
