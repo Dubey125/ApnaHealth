@@ -15,6 +15,8 @@ interface NavLink {
 // (/login) for Owner/Doctor/Front Desk, so "For Doctors"/"For Clinics"
 // pointing at distinct pages would imply a role-aware backend this app
 // doesn't have. The audience sections do that differentiation instead.
+// Shown to signed-out visitors only — once signed in as a patient, these
+// marketing anchors stop being useful and PATIENT_LINKS takes over.
 const SECTION_LINKS: NavLink[] = [
   { href: "/#for-patients", label: "For Patients" },
   { href: "/#for-doctors", label: "For Doctors" },
@@ -22,17 +24,29 @@ const SECTION_LINKS: NavLink[] = [
   { href: "/#how-it-works", label: "How It Works" },
 ];
 
+// The signed-in patient's own product nav (Appointment model design note):
+// Find Doctors is discovery, Appointments is the patient-facing view of
+// self-booked Tokens, Live Queue is whichever appointment is currently
+// active (or a "nothing active" landing), Health Records is unchanged.
+const PATIENT_LINKS: NavLink[] = [
+  { href: "/doctors", label: "Find Doctors" },
+  { href: "/patient/appointments", label: "Appointments" },
+  { href: "/patient/queue", label: "Live Queue" },
+  { href: "/patient/records", label: "Health Records" },
+];
+
 export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
   const accountLink: NavLink = signedIn
     ? { href: "/patient/account", label: "My account" }
     : { href: "/patient/login", label: "Patient login" };
-  const allLinks = [...SECTION_LINKS, accountLink];
+  const sectionLinks = signedIn ? PATIENT_LINKS : SECTION_LINKS;
+  const allLinks = [...sectionLinks, accountLink];
 
   return (
     <>
       <nav aria-label="Main" className="hidden items-center gap-5 text-sm lg:flex">
-        {SECTION_LINKS.map((link) => (
+        {sectionLinks.map((link) => (
           <Link key={link.href} href={link.href} className="text-muted transition-colors hover:text-foreground">
             {link.label}
           </Link>
@@ -43,12 +57,14 @@ export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
         <Link href={accountLink.href} className="text-sm text-muted transition-colors hover:text-foreground">
           {accountLink.label}
         </Link>
-        <Link
-          href="/get-started"
-          className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-        >
-          Get Started
-        </Link>
+        {!signedIn && (
+          <Link
+            href="/get-started"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          >
+            Get Started
+          </Link>
+        )}
       </div>
 
       <button
@@ -85,13 +101,15 @@ export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
             {link.label}
           </Link>
         ))}
-        <Link
-          href="/get-started"
-          onClick={() => setOpen(false)}
-          className="border-t border-border px-4 py-3 text-sm font-medium text-primary hover:bg-border/40"
-        >
-          Get Started
-        </Link>
+        {!signedIn && (
+          <Link
+            href="/get-started"
+            onClick={() => setOpen(false)}
+            className="border-t border-border px-4 py-3 text-sm font-medium text-primary hover:bg-border/40"
+          >
+            Get Started
+          </Link>
+        )}
       </div>
     </>
   );

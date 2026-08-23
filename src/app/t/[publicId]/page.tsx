@@ -4,10 +4,11 @@ import { prisma } from "@/lib/db";
 import { CancelButton } from "./CancelButton";
 import { PollingRefresher } from "@/components/PollingRefresher";
 import { computeAndSnapshotPrediction } from "@/lib/prediction/computeForToken";
-import { formatClinicTime } from "@/lib/format";
+import { formatClinicDate, formatClinicTime } from "@/lib/format";
 import { SiteHeader } from "@/components/ui/SiteHeader";
-import { TokenStatusBadge } from "@/components/ui/StatusBadge";
+import { Badge } from "@/components/ui/Badge";
 import { Alert, type AlertVariant } from "@/components/ui/Alert";
+import { APPOINTMENT_STATUS_LABEL, APPOINTMENT_STATUS_VARIANT } from "@/lib/appointmentStatus";
 import type { TokenStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = {
@@ -78,13 +79,19 @@ export default async function TicketPage({ params }: TicketPageProps) {
           <h1 className="text-6xl font-bold tabular-nums leading-none text-foreground">
             <span className="sr-only">Token </span>#{token.tokenNumber}
           </h1>
-          <TokenStatusBadge status={token.status} />
+          <Badge variant={APPOINTMENT_STATUS_VARIANT[token.status]}>{APPOINTMENT_STATUS_LABEL[token.status]}</Badge>
         </div>
 
-        <div className="rounded-lg border border-border bg-surface p-4 text-sm">
-          <div className="font-medium">{token.session.doctor.name}</div>
+        <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4 text-sm">
+          <div className="font-medium text-foreground">{token.session.doctor.name}</div>
+          <div className="text-muted">{token.session.doctor.specialty}</div>
           <div className="text-muted">
-            {token.session.clinic.name} · {token.session.locationLabel}
+            {token.session.clinic.name} · {token.session.clinic.addressLine}, {token.session.clinic.city}
+          </div>
+          <div className="text-muted">{token.session.locationLabel}</div>
+          <div className="mt-1 border-t border-border pt-2 text-muted">
+            {formatClinicDate(token.session.sessionDate)} · {formatClinicTime(token.session.plannedStartAt)} –{" "}
+            {formatClinicTime(token.session.plannedEndAt)}
           </div>
         </div>
 
