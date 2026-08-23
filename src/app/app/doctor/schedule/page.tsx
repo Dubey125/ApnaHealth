@@ -7,11 +7,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SessionStatusBadge } from "@/components/ui/StatusBadge";
+import { SessionForm } from "@/app/app/sessions/SessionForm";
+import { TransitionButtons } from "@/app/app/sessions/TransitionButtons";
 
-// Read-only: session creation stays Owner-only (ACCESS_MATRIX.md: "Create
-// session" is Owner ✅ only). /app/doctor only ever showed *today's*
-// sessions — this is the same query widened to everything from today
-// onward, so a doctor can see what's coming without asking the front desk.
+// A doctor's own schedule: everything from today onward (/app/doctor only
+// ever showed *today's* sessions), plus the ability to schedule their own
+// sessions and open/pause/close them — ACCESS_MATRIX.md's "Create session"
+// row now grants Doctor ✅ for their own sessions, enforced in createSession
+// by taking doctorId from the session cookie rather than the form.
 export default async function DoctorSchedulePage() {
   const session = await requireStaffSession("DOCTOR");
   if (!session.doctorId) {
@@ -27,6 +30,8 @@ export default async function DoctorSchedulePage() {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-4 sm:p-6">
       <PageHeader title="My schedule" backHref="/app/doctor" backLabel="Today's sessions" />
+
+      <SessionForm title="Schedule a session" />
 
       {sessions.length === 0 ? (
         <EmptyState title="No upcoming sessions scheduled" description="Sessions your clinic schedules for you will appear here." />
@@ -44,9 +49,12 @@ export default async function DoctorSchedulePage() {
                     <SessionStatusBadge status={s.status} />
                   </div>
                 </div>
-                <Link href={`/app/queue/${s.id}`} className="text-sm text-primary underline underline-offset-2">
-                  Open queue
-                </Link>
+                <div className="flex flex-col items-end gap-2">
+                  <TransitionButtons sessionId={s.id} status={s.status} returnTo="queue" />
+                  <Link href={`/app/queue/${s.id}`} className="text-sm text-primary underline underline-offset-2">
+                    Open queue
+                  </Link>
+                </div>
               </Card>
             </li>
           ))}

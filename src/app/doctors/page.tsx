@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/components/ui/cn";
-import { formatFeeMinor } from "@/lib/format";
+import { formatClinicDate, formatClinicTime, formatFeeMinor } from "@/lib/format";
 
 const filtersSchema = z.object({
   specialty: z.string().trim().min(1).optional(),
@@ -25,6 +25,22 @@ function firstValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function FilterChip({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-surface text-muted hover:border-primary/40 hover:text-foreground",
+      )}
+    >
+      {children}
+    </Link>
+  );
+}
+
 export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
   const rawParams = await searchParams;
   const filters = filtersSchema.parse({
@@ -34,10 +50,12 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
   });
   const hasFilters = Boolean(filters.name || filters.specialty || filters.city);
 
-  const [doctors, specialtyRows] = await Promise.all([
+  const listedDoctorWhere = { isActive: true, clinic: { isActive: true } } as const;
+
+  const [doctors, specialtyGroups, cityRows] = await Promise.all([
     prisma.doctor.findMany({
       where: {
-        isActive: true,
+        ...listedDoctorWhere,
         clinic: {
           isActive: true,
           ...(filters.city ? { city: { contains: filters.city, mode: "insensitive" } } : {}),
@@ -48,99 +66,189 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
       include: { clinic: true },
       orderBy: { name: "asc" },
     }),
-    // Real specialties only — generated from what's actually listed, never
-    // a fixed editorial list, so this can't drift out of sync with the DB
-    // or imply a specialty no doctor here actually has.
-    prisma.doctor.findMany({
-      where: { isActive: true, clinic: { isActive: true } },
-      distinct: ["specialty"],
-      select: { specialty: true },
+    // Browse-by-specialty, generated from what is actually listed (with a
+    // real count per specialty) rather than a fixed editorial taxonomy —
+    // a hardcoded list would advertise specialties no doctor here has.
+    prisma.doctor.groupBy({
+      by: ["specialty"],
+      where: listedDoctorWhere,
+      _count: { _all: true },
       orderBy: { specialty: "asc" },
     }),
+    prisma.clinic.findMany({
+      where: { isActive: true, doctors: { some: { isActive: true } } },
+      distinct: ["city"],
+      select: { city: true },
+      orderBy: { city: "asc" },
+    }),
   ]);
-  const specialties = specialtyRows.map((row) => row.specialty);
+
+  // "Next available" per doctor — the soonest session still ahead of us,
+  // fetched in one query for every doctor on the page rather than N+1.
+  // Filtered on plannedEndAt (not sessionDate) for the same reason the
+  // doctor profile page does: sessionDate is a date-only marker.
+  const upcomingSessions =
+    doctors.length > 0
+      ? await prisma.session.findMany({
+          where: {
+            doctorId: { in: doctors.map((d) => d.id) },
+            status: { in: ["SCHEDULED", "OPEN", "IN_PROGRESS"] },
+            plannedEndAt: { gte: new Date() },
+          },
+          orderBy: { plannedStartAt: "asc" },
+        })
+      : [];
+  const nextSessionByDoctor = new Map<string, (typeof upcomingSessions)[number]>();
+  for (const session of upcomingSessions) {
+    if (!nextSessionByDoctor.has(session.doctorId)) nextSessionByDoctor.set(session.doctorId, session);
+  }
+
+  const cities = cityRows.map((row) => row.city);
+
+  // Verified doctors rank first, then alphabetical. Done here rather than
+  // as an `orderBy: { verificationStatus }`: Postgres sorts an enum by its
+  // declaration order (PENDING, VERIFIED, REJECTED), which would rank
+  // unverified doctors above verified ones — the opposite of what a
+  // patient scanning this list wants.
+  const rankedDoctors = [...doctors].sort((a, b) => {
+    const aVerified = a.verificationStatus === "VERIFIED" ? 0 : 1;
+    const bVerified = b.verificationStatus === "VERIFIED" ? 0 : 1;
+    return aVerified - bVerified || a.name.localeCompare(b.name);
+  });
 
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Find a doctor</h1>
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Find the right doctor</h1>
+            <p className="text-base text-muted">
+              Search verified doctors, see when they&apos;re next available, and book a digital token.
+            </p>
+          </div>
 
-        <form method="GET" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          <Input name="name" defaultValue={filters.name} placeholder="Doctor name" className="sm:w-48" />
-          <Input name="specialty" defaultValue={filters.specialty} placeholder="Specialty" className="sm:w-48" />
-          <Input name="city" defaultValue={filters.city} placeholder="City" className="sm:w-40" />
-          <button
-            type="submit"
-            className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          >
-            Search
-          </button>
-          {hasFilters && (
-            <Link
-              href="/doctors"
-              className="inline-flex h-11 items-center text-sm text-muted underline underline-offset-2 hover:text-foreground"
+          <form method="GET" className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center">
+            <Input name="name" defaultValue={filters.name} placeholder="Doctor name" className="sm:flex-1" />
+            <Input name="specialty" defaultValue={filters.specialty} placeholder="Specialty" className="sm:flex-1" />
+            <Input name="city" defaultValue={filters.city} placeholder="City" className="sm:w-40" />
+            <button
+              type="submit"
+              className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
-              Clear filters
-            </Link>
-          )}
-        </form>
+              Search
+            </button>
+          </form>
+        </div>
 
-        {specialties.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {specialties.map((specialty) => {
-              const active = filters.specialty?.toLowerCase() === specialty.toLowerCase();
-              return (
-                <Link
-                  key={specialty}
-                  href={active ? "/doctors" : `/doctors?specialty=${encodeURIComponent(specialty)}`}
-                  className={cn(
-                    "inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-surface text-muted hover:border-primary/40 hover:text-foreground",
-                  )}
-                >
-                  {specialty}
-                </Link>
-              );
-            })}
+        {specialtyGroups.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Browse by specialty</h2>
+            <div className="flex flex-wrap gap-2">
+              {specialtyGroups.map((group) => {
+                const active = filters.specialty?.toLowerCase() === group.specialty.toLowerCase();
+                return (
+                  <FilterChip
+                    key={group.specialty}
+                    active={active}
+                    href={active ? "/doctors" : `/doctors?specialty=${encodeURIComponent(group.specialty)}`}
+                  >
+                    {group.specialty}
+                    <span className={cn("tabular-nums", active ? "text-primary-foreground/70" : "text-muted/70")}>
+                      {group._count._all}
+                    </span>
+                  </FilterChip>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {doctors.length === 0 ? (
-          <EmptyState
-            title="No doctors match those filters"
-            description={hasFilters ? "Try a different name, specialty or city." : "No doctors are listed yet."}
-          />
-        ) : (
-          <ul className="grid gap-4 sm:grid-cols-2">
-            {doctors.map((doctor) => (
-              <li key={doctor.id}>
-                <Link href={`/doctors/${doctor.slug}`}>
-                  <Card className="flex gap-3 transition-colors hover:border-primary/40">
-                    <Avatar name={doctor.name} photoUrl={doctor.photoUrl} size={56} className="shrink-0" />
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{doctor.name}</span>
-                        {doctor.verificationStatus === "VERIFIED" && (
-                          <VerificationStatusBadge status={doctor.verificationStatus} />
-                        )}
-                      </div>
-                      <span className="text-sm text-muted">{doctor.specialty}</span>
-                      <span className="text-sm text-muted">
-                        {doctor.clinic.name} · {doctor.clinic.city}
-                      </span>
-                      {doctor.consultationFeeMinor != null && (
-                        <span className="text-sm text-muted">{formatFeeMinor(doctor.consultationFeeMinor)} consultation</span>
-                      )}
-                    </div>
-                  </Card>
-                </Link>
-              </li>
-            ))}
-          </ul>
+        {cities.length > 1 && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Browse by city</h2>
+            <div className="flex flex-wrap gap-2">
+              {cities.map((city) => {
+                const active = filters.city?.toLowerCase() === city.toLowerCase();
+                return (
+                  <FilterChip key={city} active={active} href={active ? "/doctors" : `/doctors?city=${encodeURIComponent(city)}`}>
+                    {city}
+                  </FilterChip>
+                );
+              })}
+            </div>
+          </div>
         )}
+
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              {doctors.length} {doctors.length === 1 ? "doctor" : "doctors"}
+              {hasFilters ? " matching" : " listed"}
+            </h2>
+            {hasFilters && (
+              <Link href="/doctors" className="text-sm text-primary underline underline-offset-2">
+                Clear filters
+              </Link>
+            )}
+          </div>
+
+          {doctors.length === 0 ? (
+            <EmptyState
+              title="No doctors match those filters"
+              description={hasFilters ? "Try a different name, specialty or city." : "No doctors are listed yet."}
+            />
+          ) : (
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {rankedDoctors.map((doctor) => {
+                const next = nextSessionByDoctor.get(doctor.id);
+                return (
+                  <li key={doctor.id}>
+                    <Link href={`/doctors/${doctor.slug}`} className="block h-full">
+                      <Card className="flex h-full flex-col gap-3 transition-colors hover:border-primary/40">
+                        <div className="flex gap-3">
+                          <Avatar name={doctor.name} photoUrl={doctor.photoUrl} size={56} className="shrink-0" />
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-foreground">{doctor.name}</span>
+                              {doctor.verificationStatus === "VERIFIED" && (
+                                <VerificationStatusBadge status={doctor.verificationStatus} />
+                              )}
+                            </div>
+                            <span className="text-sm font-medium text-primary">{doctor.specialty}</span>
+                            <span className="truncate text-xs text-muted">{doctor.qualificationText}</span>
+                            {doctor.experienceYears != null && (
+                              <span className="text-xs text-muted">{doctor.experienceYears} years experience</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-0.5 text-sm text-muted">
+                          <span>
+                            {doctor.clinic.name} · {doctor.clinic.city}
+                          </span>
+                          {doctor.consultationFeeMinor != null && (
+                            <span>{formatFeeMinor(doctor.consultationFeeMinor)} consultation</span>
+                          )}
+                        </div>
+
+                        <div className="mt-auto border-t border-border pt-3 text-sm">
+                          {next ? (
+                            <span className="font-medium text-success">
+                              Next: {formatClinicDate(next.sessionDate)}, {formatClinicTime(next.plannedStartAt)}
+                            </span>
+                          ) : (
+                            <span className="text-muted">No upcoming sessions</span>
+                          )}
+                        </div>
+                      </Card>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </main>
       <Footer />
     </>

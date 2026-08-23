@@ -13,28 +13,48 @@ export interface SessionFormState {
 }
 
 const createSessionSchema = z.object({
-  doctorId: z.string().min(1),
+  // Optional because a DOCTOR never supplies it — their own doctorId is
+  // taken from the session instead (see below).
+  doctorId: z.string().min(1).optional(),
   sessionDate: z.string().min(1),
   plannedStartAt: z.string().min(1),
   plannedEndAt: z.string().min(1),
   locationLabel: z.string().trim().min(1),
 });
 
+// Widened from OWNER-only to also allow DOCTOR, for their OWN sessions
+// only. ACCESS_MATRIX.md's "Create session" row is updated alongside this
+// (Doctor: ✅ own sessions) rather than silently diverging from it.
+//
+// The doctor's own doctorId comes from the verified session cookie and the
+// submitted `doctorId` field is ignored entirely for that role — so a
+// doctor cannot schedule a session onto a colleague's calendar by editing
+// the form. Owners keep picking any doctor in their clinic.
 export async function createSession(_prevState: SessionFormState, formData: FormData): Promise<SessionFormState> {
-  const session = await requireStaffSession("OWNER");
+  const session = await requireStaffSession("OWNER", "DOCTOR");
 
   const parsed = createSessionSchema.safeParse({
-    doctorId: formData.get("doctorId"),
+    doctorId: formData.get("doctorId") || undefined,
     sessionDate: formData.get("sessionDate"),
     plannedStartAt: formData.get("plannedStartAt"),
     plannedEndAt: formData.get("plannedEndAt"),
     locationLabel: formData.get("locationLabel"),
   });
   if (!parsed.success) {
-    return { error: "Fill in doctor, date, start/end time and a location." };
+    return { error: "Fill in date, start/end time and a location." };
   }
 
-  const doctor = await prisma.doctor.findUnique({ where: { id: parsed.data.doctorId } });
+  const targetDoctorId = session.role === "DOCTOR" ? session.doctorId : parsed.data.doctorId;
+  if (!targetDoctorId) {
+    return {
+      error:
+        session.role === "DOCTOR"
+          ? "This staff account is not linked to a doctor profile."
+          : "Select which doctor this session is for.",
+    };
+  }
+
+  const doctor = await prisma.doctor.findUnique({ where: { id: targetDoctorId } });
   if (!doctor) {
     return { error: "Doctor not found." };
   }
@@ -46,7 +66,8 @@ export async function createSession(_prevState: SessionFormState, formData: Form
     return { error: "Enter a valid date and an end time after the start time." };
   }
 
-  await prisma.session.create({
+  const now = new Date();
+  const created = await prisma.session.create({
     data: {
       clinicId: session.clinicId,
       doctorId: doctor.id,
@@ -58,7 +79,24 @@ export async function createSession(_prevState: SessionFormState, formData: Form
     },
   });
 
-  redirect("/app/sessions");
+  // Now that two different roles can create sessions, who scheduled what
+  // is worth recording — same AuditEvent pattern as doctor creation and
+  // verification.
+  await prisma.auditEvent.create({
+    data: {
+      clinicId: session.clinicId,
+      actorUserId: session.staffUserId,
+      action: "SESSION_CREATED",
+      entityType: "Session",
+      entityId: created.id,
+      occurredAt: now,
+      metadata: { doctorName: doctor.name, locationLabel: parsed.data.locationLabel },
+    },
+  });
+
+  // A DOCTOR has no access to /app/sessions (OWNER/FRONT_DESK only), so
+  // sending them there would bounce them straight to /login.
+  redirect(session.role === "DOCTOR" ? "/app/doctor/schedule" : "/app/sessions");
 }
 
 const transitionSchema = z.object({

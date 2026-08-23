@@ -6,8 +6,17 @@ import { Input } from "@/components/ui/Input";
 import { VerificationStatusBadge, TokenStatusBadge, SessionStatusBadge } from "@/components/ui/StatusBadge";
 import { AudienceCard } from "@/components/marketing/AudienceCard";
 import { PreviewFrame } from "@/components/marketing/PreviewFrame";
+import { QueueJourney } from "@/components/queue/QueueJourney";
 
 const TRUST_ITEMS = ["Verified doctor profiles", "Digital serials", "Live queue intelligence", "Secure care history"];
+
+// Fixed instants (not `new Date()`) so the showcase renders the same
+// times on every request. Expressed in UTC; formatClinicTime renders them
+// in the clinic timezone (Asia/Kolkata) — 09:05Z is 2:35 pm IST.
+const SHOWCASE_WINDOW_START = new Date("2026-01-01T09:05:00Z");
+const SHOWCASE_WINDOW_END = new Date("2026-01-01T09:25:00Z");
+const SHOWCASE_BREAK_START = new Date("2026-01-01T07:30:00Z");
+const SHOWCASE_BREAK_END = new Date("2026-01-01T08:00:00Z");
 
 const HOW_IT_WORKS = [
   { step: "Need", body: "You need to see a doctor." },
@@ -194,33 +203,28 @@ export default function Home() {
               </p>
             </div>
 
-            <Card className="mx-auto flex w-full max-w-sm flex-col items-center gap-5 p-8 text-center">
+            {/* The real QueueJourney component patients see on their own
+                ticket page, fed illustrative values — not a hand-built
+                lookalike, so this showcase cannot drift away from the
+                actual product as the component evolves. */}
+            <div className="mx-auto flex w-full max-w-md flex-col items-center gap-5">
               <div className="flex flex-col items-center gap-1">
                 <span className="text-sm text-muted">Your token</span>
                 <div className="text-6xl font-bold tabular-nums leading-none text-foreground">#28</div>
                 <TokenStatusBadge status="CHECKED_IN" />
               </div>
 
-              <div className="flex w-full flex-col gap-3 rounded-lg border border-border bg-surface p-4">
-                <div className="flex items-center justify-center gap-1.5 text-sm text-muted">
-                  <span>Now serving</span>
-                  <span className="font-semibold tabular-nums text-foreground">#24</span>
-                </div>
-                <div>
-                  <div className="text-3xl font-bold tabular-nums text-foreground">3</div>
-                  <div className="text-sm text-muted">patients ahead</div>
-                </div>
-                <div className="border-t border-border pt-3">
-                  <div className="text-xs text-muted">Estimated arrival</div>
-                  <div className="text-lg font-medium tabular-nums text-foreground">2:35 PM – 2:55 PM</div>
-                  <div className="mt-1 text-xs text-muted">Leave around 2:25 PM</div>
-                </div>
+              <div className="w-full">
+                <QueueJourney
+                  myTokenNumber={28}
+                  nowServingNumber={24}
+                  aheadNumbers={[25, 26, 27]}
+                  windowStartAt={SHOWCASE_WINDOW_START}
+                  windowEndAt={SHOWCASE_WINDOW_END}
+                  relevantBreak={{ startAt: SHOWCASE_BREAK_START, endAt: SHOWCASE_BREAK_END }}
+                />
               </div>
-
-              <div className="w-full rounded-md border border-warning/30 bg-warning/10 px-4 py-2 text-sm font-medium text-warning">
-                Doctor on scheduled lunch break, 1:00 – 1:30 PM — already reflected above
-              </div>
-            </Card>
+            </div>
             <p className="text-center text-xs text-muted">Illustrative example — every estimate is a window, never a guarantee.</p>
           </div>
         </section>

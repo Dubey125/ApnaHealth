@@ -53,5 +53,22 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Was hardcoded to Arial, which silently overrode the Geist font
+     layout.tsx loads — DESIGN_SYSTEM.md's typography scale assumes Geist
+     ("Keep the existing Geist Sans/Mono font loading in layout.tsx"), so
+     the whole site had been rendering in a fallback face it never chose. */
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Respect a reader's reduced-motion preference for the one automatic
+   animation in the app (the live "now serving" pulse on the queue
+   tracker) — DESIGN_SYSTEM.md otherwise allows no auto-playing motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { CancelButton } from "./CancelButton";
 import { PollingRefresher } from "@/components/PollingRefresher";
+import { QueueJourney } from "@/components/queue/QueueJourney";
 import { computeAndSnapshotPrediction } from "@/lib/prediction/computeForToken";
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
 import { SiteHeader } from "@/components/ui/SiteHeader";
@@ -51,7 +52,7 @@ export default async function TicketPage({ params }: TicketPageProps) {
   }
 
   const cancellable = token.status === "BOOKED" || token.status === "CHECKED_IN";
-  const [prediction, nowServing] = await Promise.all([
+  const [prediction, nowServing, ahead] = await Promise.all([
     cancellable ? computeAndSnapshotPrediction(token.id) : Promise.resolve(null),
     // Only the current token's number, never a name or phone — same
     // no-other-patient-PII boundary the rest of this page already
@@ -59,6 +60,16 @@ export default async function TicketPage({ params }: TicketPageProps) {
     cancellable
       ? prisma.token.findFirst({ where: { sessionId: token.sessionId, status: "IN_CONSULT" }, select: { tokenNumber: true } })
       : Promise.resolve(null),
+    // Token numbers only, for the queue tracker's individual stops — same
+    // set the prediction counts as "tokensAhead", so the visible stops and
+    // the predicted window always agree.
+    cancellable
+      ? prisma.token.findMany({
+          where: { sessionId: token.sessionId, status: "CHECKED_IN", tokenNumber: { lt: token.tokenNumber } },
+          select: { tokenNumber: true },
+          orderBy: { tokenNumber: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
   // Captured once, after every query above has resolved, so it reflects
   // when this data actually became stale — not when the request started.
@@ -73,7 +84,7 @@ export default async function TicketPage({ params }: TicketPageProps) {
           has no loading.tsx on purpose, so router.refresh() re-renders in
           place instead of flashing a skeleton every 5s (PHASE-14). */}
       {cancellable && <PollingRefresher />}
-      <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-5 px-4 py-6 sm:px-6">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 px-4 py-6 sm:px-6">
         <div className="flex flex-col items-center gap-2 text-center">
           <span className="text-sm text-muted">Your token</span>
           <h1 className="text-6xl font-bold tabular-nums leading-none text-foreground">
@@ -100,40 +111,14 @@ export default async function TicketPage({ params }: TicketPageProps) {
         </Alert>
 
         {prediction && (
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 text-center">
-            {nowServing && (
-              <div className="flex items-center justify-center gap-1.5 text-sm text-muted">
-                <span>Now serving</span>
-                <span className="font-semibold tabular-nums text-foreground">#{nowServing.tokenNumber}</span>
-              </div>
-            )}
-
-            {prediction.tokensAhead > 0 ? (
-              <div>
-                <div className="text-3xl font-bold tabular-nums text-foreground">{prediction.tokensAhead}</div>
-                <div className="text-sm text-muted">
-                  {prediction.tokensAhead === 1 ? "person" : "people"} ahead of you
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm font-medium text-foreground">You&apos;re next in line</div>
-            )}
-
-            <div className="border-t border-border pt-3">
-              <div className="text-xs text-muted">Estimated arrival window</div>
-              <div className="text-lg font-medium tabular-nums text-foreground">
-                {formatClinicTime(prediction.windowStartAt)} – {formatClinicTime(prediction.windowEndAt)}
-              </div>
-              <div className="mt-1 text-xs text-muted">This is an estimate, not a guarantee.</div>
-            </div>
-          </div>
-        )}
-
-        {prediction?.relevantBreak && (
-          <Alert variant="warning">
-            The doctor has a scheduled break from {formatClinicTime(prediction.relevantBreak.startAt)} to{" "}
-            {formatClinicTime(prediction.relevantBreak.endAt)}. Your estimate above already accounts for it.
-          </Alert>
+          <QueueJourney
+            myTokenNumber={token.tokenNumber}
+            nowServingNumber={nowServing?.tokenNumber ?? null}
+            aheadNumbers={ahead.map((t) => t.tokenNumber)}
+            windowStartAt={prediction.windowStartAt}
+            windowEndAt={prediction.windowEndAt}
+            relevantBreak={prediction.relevantBreak}
+          />
         )}
 
         {cancellable && (

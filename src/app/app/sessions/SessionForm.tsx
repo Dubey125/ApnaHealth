@@ -9,25 +9,31 @@ import { Button } from "@/components/ui/Button";
 const initialState: SessionFormState = {};
 
 interface SessionFormProps {
-  doctors: { id: string; name: string }[];
+  // Omitted when a doctor is scheduling for themselves: the action takes
+  // their doctorId from the session cookie and ignores any submitted
+  // value, so there is nothing to pick.
+  doctors?: { id: string; name: string }[];
+  title?: string;
 }
 
-export function SessionForm({ doctors }: SessionFormProps) {
+export function SessionForm({ doctors, title = "Create session" }: SessionFormProps) {
   const [state, formAction, pending] = useActionState(createSession, initialState);
 
   return (
     <form action={formAction} className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
-      <h2 className="text-sm font-medium text-foreground">Create session</h2>
-      <Label htmlFor="session-doctor">
-        Doctor
-        <Select id="session-doctor" name="doctorId" required>
-          {doctors.map((doctor) => (
-            <option key={doctor.id} value={doctor.id}>
-              {doctor.name}
-            </option>
-          ))}
-        </Select>
-      </Label>
+      <h2 className="text-sm font-medium text-foreground">{title}</h2>
+      {doctors && (
+        <Label htmlFor="session-doctor">
+          Doctor
+          <Select id="session-doctor" name="doctorId" required>
+            {doctors.map((doctor) => (
+              <option key={doctor.id} value={doctor.id}>
+                {doctor.name}
+              </option>
+            ))}
+          </Select>
+        </Label>
+      )}
       <Label htmlFor="session-date">
         Date
         <Input id="session-date" name="sessionDate" type="date" required />
