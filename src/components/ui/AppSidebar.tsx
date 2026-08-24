@@ -164,9 +164,36 @@ function SignOut() {
   );
 }
 
-export function AppSidebar({ role, clinicName }: { role: StaffRole; clinicName: string }) {
+// An OWNER whose account is linked to a doctor profile (the independent
+// practitioner created by self-signup) owns the facility AND consults in
+// it, so they get the owner sections plus their own clinical workspace.
+function sectionsFor(role: StaffRole, hasDoctorProfile: boolean): NavSection[] {
+  const base = SECTIONS_BY_ROLE[role];
+  if (role !== "OWNER" || !hasDoctorProfile) return base;
+  return [
+    {
+      label: "My practice",
+      links: [
+        { href: "/app/doctor", label: "Today", icon: IconOverview },
+        { href: "/app/doctor/schedule", label: "My schedule", icon: IconCalendar },
+        { href: "/app/doctor/profile", label: "My profile", icon: IconUserCircle },
+      ],
+    },
+    ...base,
+  ];
+}
+
+export function AppSidebar({
+  role,
+  clinicName,
+  hasDoctorProfile = false,
+}: {
+  role: StaffRole;
+  clinicName: string;
+  hasDoctorProfile?: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  const sections = SECTIONS_BY_ROLE[role];
+  const sections = sectionsFor(role, hasDoctorProfile);
   const activeHref = useActiveHref(sections);
 
   return (

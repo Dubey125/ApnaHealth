@@ -44,7 +44,13 @@ export async function createSession(_prevState: SessionFormState, formData: Form
     return { error: "Fill in date, start/end time and a location." };
   }
 
-  const targetDoctorId = session.role === "DOCTOR" ? session.doctorId : parsed.data.doctorId;
+  // A DOCTOR always schedules for themselves — the submitted field is
+  // ignored so it cannot be pointed at a colleague. An OWNER picking from
+  // the clinic-wide form schedules for whoever they chose; an OWNER who is
+  // also a doctor (self-signup solo practice) submits no doctor field from
+  // their own schedule screen and falls back to their own profile.
+  const targetDoctorId =
+    session.role === "DOCTOR" ? session.doctorId : (parsed.data.doctorId ?? session.doctorId);
   if (!targetDoctorId) {
     return {
       error:
@@ -94,9 +100,13 @@ export async function createSession(_prevState: SessionFormState, formData: Form
     },
   });
 
-  // A DOCTOR has no access to /app/sessions (OWNER/FRONT_DESK only), so
-  // sending them there would bounce them straight to /login.
-  redirect(session.role === "DOCTOR" ? "/app/doctor/schedule" : "/app/sessions");
+  // Return the user to the screen they submitted from. A DOCTOR has no
+  // access to /app/sessions (OWNER/FRONT_DESK only) so would be bounced to
+  // /login; and an owner-doctor scheduling from their own "My schedule"
+  // page (recognised by the absence of a doctor picker) should land back
+  // there rather than on the clinic-wide list.
+  const cameFromOwnSchedule = session.role === "DOCTOR" || !parsed.data.doctorId;
+  redirect(cameFromOwnSchedule ? "/app/doctor/schedule" : "/app/sessions");
 }
 
 const transitionSchema = z.object({

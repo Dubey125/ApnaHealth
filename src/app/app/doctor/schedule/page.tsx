@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireStaffSession } from "@/lib/auth/staff";
+import { requireDoctorContext } from "@/lib/auth/staff";
 import { prisma } from "@/lib/db";
 import { clinicDayBounds } from "@/lib/clinicDay";
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
@@ -16,10 +16,7 @@ import { TransitionButtons } from "@/app/app/sessions/TransitionButtons";
 // row now grants Doctor ✅ for their own sessions, enforced in createSession
 // by taking doctorId from the session cookie rather than the form.
 export default async function DoctorSchedulePage() {
-  const session = await requireStaffSession("DOCTOR");
-  if (!session.doctorId) {
-    throw new Error("This staff account is not linked to a doctor profile.");
-  }
+  const session = await requireDoctorContext();
 
   const { start } = clinicDayBounds(new Date());
   const sessions = await prisma.session.findMany({

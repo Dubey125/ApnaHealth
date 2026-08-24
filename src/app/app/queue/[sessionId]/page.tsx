@@ -151,7 +151,18 @@ export default async function QueuePage({ params }: QueuePageProps) {
                   #{current.tokenNumber}
                 </div>
                 <div className="mt-2 text-lg font-medium text-foreground">{current.patientNameSnapshot}</div>
-                <div className="text-sm text-muted">{current.patientPhoneSnapshot}</div>
+                <div className="text-sm text-muted">
+                  {[
+                    current.patientAgeSnapshot != null ? `${current.patientAgeSnapshot} yrs` : null,
+                    current.patientSexSnapshot,
+                    current.patientPhoneSnapshot,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </div>
+                {current.reasonForVisit && (
+                  <div className="mt-1 max-w-sm text-sm text-foreground">“{current.reasonForVisit}”</div>
+                )}
                 {current.consultStartedAt && (
                   <div className="mt-1 text-xs text-muted">
                     In consult {waitedFor(current.consultStartedAt, now)} · since{" "}

@@ -7,6 +7,18 @@ export function formatClinicDate(date: Date): string {
   return new Intl.DateTimeFormat("en-IN", { timeZone: CLINIC_TIME_ZONE, dateStyle: "medium" }).format(date);
 }
 
+// "Mon, 25 Aug 2026" — the weekday matters for a recurring clinic rota
+// ("Dr. Sharma is here Tuesdays"), which a bare date hides.
+export function formatClinicDateWithWeekday(date: Date): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: CLINIC_TIME_ZONE,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 export function formatClinicTime(date: Date): string {
   return new Intl.DateTimeFormat("en-IN", { timeZone: CLINIC_TIME_ZONE, timeStyle: "short" }).format(date);
 }

@@ -73,6 +73,14 @@ export default function GetStartedPage() {
           <Link href="/patient/register" className="font-medium text-primary underline underline-offset-2">
             Register as a patient
           </Link>
+          ,{" "}
+          <Link href="/register/doctor" className="font-medium text-primary underline underline-offset-2">
+            register as a doctor
+          </Link>
+          ,{" "}
+          <Link href="/register/clinic" className="font-medium text-primary underline underline-offset-2">
+            register a clinic or hospital
+          </Link>
           , or{" "}
           <Link href="/#for-clinics" className="font-medium text-primary underline underline-offset-2">
             learn about running your clinic on ApnaHealth

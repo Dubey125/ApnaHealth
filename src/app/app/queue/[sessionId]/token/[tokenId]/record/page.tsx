@@ -48,9 +48,30 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
           backHref={`/app/queue/${clinicSession.id}`}
           backLabel="Back to queue"
         />
-        <p className="text-sm text-muted">
-          {token.patientNameSnapshot} · #{token.tokenNumber}
-        </p>
+        {/* Everything the counter captured for this walk-in. Without an
+            account there is no stored history to show, but the doctor
+            should still see who is in front of them and why. */}
+        <Card className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground">{token.patientNameSnapshot}</h2>
+            <Badge variant="neutral">Token #{token.tokenNumber}</Badge>
+            <Badge variant="warning">Walk-in</Badge>
+          </div>
+          <p className="text-sm text-muted">
+            {[
+              token.patientAgeSnapshot != null ? `${token.patientAgeSnapshot} yrs` : null,
+              token.patientSexSnapshot,
+              token.patientPhoneSnapshot,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          {token.reasonForVisit && (
+            <p className="text-sm text-foreground">
+              <span className="font-medium">Reason for visit:</span> {token.reasonForVisit}
+            </p>
+          )}
+        </Card>
         <Alert variant="info">
           This visit has no linked patient account, so a clinical record cannot be attached to it. The patient can
           link future visits by registering or signing in with the same phone number before booking or checking in.
@@ -105,13 +126,18 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
             </div>
             <p className="text-sm text-muted">
               {[
-                patient.dateOfBirth ? `${ageInYears(patient.dateOfBirth, now)} yrs` : null,
-                patient.sex,
+                patient.dateOfBirth ? `${ageInYears(patient.dateOfBirth, now)} yrs` : token.patientAgeSnapshot != null ? `${token.patientAgeSnapshot} yrs` : null,
+                patient.sex ?? token.patientSexSnapshot,
                 patient.phone,
               ]
                 .filter(Boolean)
                 .join(" · ")}
             </p>
+            {token.reasonForVisit && (
+              <p className="text-sm text-foreground">
+                <span className="font-medium">Reason for visit:</span> {token.reasonForVisit}
+              </p>
+            )}
           </div>
         </div>
 

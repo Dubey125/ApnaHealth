@@ -14,15 +14,17 @@ import { AppSidebar } from "./AppSidebar";
 export function AppShell({
   role,
   clinicName,
+  hasDoctorProfile = false,
   children,
 }: {
   role: StaffRole;
+  hasDoctorProfile?: boolean;
   clinicName: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-background lg:flex-row">
-      <AppSidebar role={role} clinicName={clinicName} />
+      <AppSidebar role={role} clinicName={clinicName} hasDoctorProfile={hasDoctorProfile} />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

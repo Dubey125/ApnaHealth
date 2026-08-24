@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaffSession } from "@/lib/auth/staff";
+import { requireDoctorContext } from "@/lib/auth/staff";
 
 export interface UpdateDoctorProfileState {
   error?: string;
@@ -30,10 +30,7 @@ export async function updateDoctorProfile(
   _prevState: UpdateDoctorProfileState,
   formData: FormData,
 ): Promise<UpdateDoctorProfileState> {
-  const session = await requireStaffSession("DOCTOR");
-  if (!session.doctorId) {
-    throw new Error("This staff account is not linked to a doctor profile.");
-  }
+  const session = await requireDoctorContext();
 
   const parsed = updateDoctorProfileSchema.safeParse({
     qualificationText: formData.get("qualificationText"),

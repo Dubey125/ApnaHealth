@@ -29,6 +29,7 @@ const COLUMNS: FooterColumn[] = [
     heading: "Doctors",
     links: [
       { href: "/#for-doctors", label: "For doctors" },
+      { href: "/register/doctor", label: "Register as a doctor" },
       { href: "/login", label: "Doctor login" },
     ],
   },
@@ -36,6 +37,7 @@ const COLUMNS: FooterColumn[] = [
     heading: "Clinics",
     links: [
       { href: "/#for-clinics", label: "For clinics" },
+      { href: "/register/clinic", label: "Register a clinic or hospital" },
       { href: "/login", label: "Clinic / staff login" },
     ],
   },

@@ -10,6 +10,7 @@ const STAFF_COOKIE = "staff_session";
 // typed locally.
 interface StaffSessionPayload {
   role: "OWNER" | "FRONT_DESK" | "DOCTOR";
+  doctorId?: string | null;
 }
 
 // /app/analytics and /app/doctor each have a fixed, resource-independent
@@ -24,11 +25,16 @@ interface StaffSessionPayload {
 // non-browser client sitting on a 200 response. The page-level
 // requireStaffSession(role) check stays in place either way; this is
 // defense in depth; not a replacement.
-const STATIC_ROLE_ROUTES: Record<string, StaffSessionPayload["role"]> = {
-  "/app/analytics": "OWNER",
-  "/app/doctor": "DOCTOR",
-  "/app/doctor/schedule": "DOCTOR",
-  "/app/doctor/profile": "DOCTOR",
+// Each entry decides, from the signed session payload alone, whether this
+// exact path is permitted. The doctor routes accept an OWNER whose account
+// is linked to a doctor profile (the independent practitioner from
+// self-signup) as well as a DOCTOR — mirroring requireDoctorContext, which
+// remains the real check at the page level.
+const STATIC_ROLE_ROUTES: Record<string, (s: StaffSessionPayload) => boolean> = {
+  "/app/analytics": (s) => s.role === "OWNER",
+  "/app/doctor": (s) => s.role === "DOCTOR" || (s.role === "OWNER" && !!s.doctorId),
+  "/app/doctor/schedule": (s) => s.role === "DOCTOR" || (s.role === "OWNER" && !!s.doctorId),
+  "/app/doctor/profile": (s) => s.role === "DOCTOR" || (s.role === "OWNER" && !!s.doctorId),
 };
 
 interface RateLimitRule {
@@ -45,6 +51,12 @@ function matchRateLimitRule(pathname: string): RateLimitRule | null {
     return { limit: 10, windowMs: 5 * 60_000 };
   }
   if (pathname === "/patient/register") {
+    return { limit: 5, windowMs: 15 * 60_000 };
+  }
+  // Public facility/doctor signup creates a Clinic plus a privileged
+  // OWNER account, so it is rate limited at least as tightly as patient
+  // registration.
+  if (pathname === "/register/clinic" || pathname === "/register/doctor") {
     return { limit: 5, windowMs: 15 * 60_000 };
   }
   if (pathname.startsWith("/book/")) {
@@ -77,8 +89,8 @@ export async function proxy(request: NextRequest) {
     if (!session) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-    const requiredRole = STATIC_ROLE_ROUTES[pathname];
-    if (requiredRole && session.role !== requiredRole) {
+    const isAllowed = STATIC_ROLE_ROUTES[pathname];
+    if (isAllowed && !isAllowed(session)) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
     return NextResponse.next();
@@ -101,5 +113,13 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/login", "/patient/login", "/patient/register", "/book/:path*", "/t/:path*"],
+  matcher: [
+    "/app/:path*",
+    "/login",
+    "/patient/login",
+    "/patient/register",
+    "/register/:path*",
+    "/book/:path*",
+    "/t/:path*",
+  ],
 };

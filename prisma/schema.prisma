@@ -152,6 +152,15 @@ model Doctor {
   consultationFeeMinor  Int?
   bio                   String?
   photoUrl              String?
+  // Public contact details for the doctor's own profile. Distinct from
+  // Clinic.phone (the facility switchboard) — a patient looking at a
+  // doctor page needs to know how to reach that practitioner, and a
+  // multi-location doctor is not reachable on any one clinic's number.
+  // Deliberately not unique: a doctor may legitimately publish a shared
+  // practice address, and StaffUser.email already carries the unique
+  // login identity.
+  phone                 String?
+  email                 String?
   // Not in DATA_MODEL.md's Doctor field list, but QUEUE_RULES.md's
   // prediction baseline explicitly requires "doctor's default consultation
   // minutes" as its last fallback tier — added to close that gap.
@@ -253,6 +262,13 @@ model Token {
   patient              Patient?    @relation(fields: [patientId], references: [id], onDelete: SetNull)
   patientNameSnapshot  String
   patientPhoneSnapshot String
+  // Captured at the counter for a walk-in / offline booking, where there
+  // is no Patient account to read age or sex from. Snapshots, like the
+  // name and phone above: they describe who attended this visit and are
+  // never back-filled from an account created later.
+  patientAgeSnapshot   Int?
+  patientSexSnapshot   String?
+  reasonForVisit       String?
   source               TokenSource
   status               TokenStatus @default(BOOKED)
   issuedAt             DateTime    @default(now()) @db.Timestamptz(3)

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { requireStaffSession, assertClinicAccess, type StaffSession } from "@/lib/auth/staff";
+import { requireDoctorContext, assertClinicAccess, type StaffSession } from "@/lib/auth/staff";
 import type { Session, Token } from "@/generated/prisma/client";
 import { isRecordableTokenStatus } from "./access";
 
@@ -14,10 +14,7 @@ export interface DoctorRecordContext {
 // their own clinic and is their own session, and the token has reached a
 // consult-started status.
 export async function loadTokenForDoctorRecord(sessionId: string, tokenId: string): Promise<DoctorRecordContext> {
-  const session = await requireStaffSession("DOCTOR");
-  if (!session.doctorId) {
-    throw new Error("This staff account is not linked to a doctor profile.");
-  }
+  const session = await requireDoctorContext();
 
   const clinicSession = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!clinicSession) {

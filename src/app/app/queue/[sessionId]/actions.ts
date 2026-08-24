@@ -52,6 +52,12 @@ const walkInSchema = z.object({
   sessionId: z.string().min(1),
   patientName: z.string().trim().min(1),
   patientPhone: z.string().trim().min(6),
+  // Captured at the counter because a walk-in has no Patient account to
+  // read these from. All optional: the front desk should never be blocked
+  // from issuing a token because a detail is missing.
+  patientAge: z.coerce.number().int().min(0).max(130).optional(),
+  patientSex: z.enum(["Female", "Male", "Other"]).optional(),
+  reasonForVisit: z.string().trim().min(1).optional(),
 });
 
 export async function issueWalkInToken(_prevState: QueueActionState, formData: FormData): Promise<QueueActionState> {
@@ -59,9 +65,12 @@ export async function issueWalkInToken(_prevState: QueueActionState, formData: F
     sessionId: formData.get("sessionId"),
     patientName: formData.get("patientName"),
     patientPhone: formData.get("patientPhone"),
+    patientAge: formData.get("patientAge") || undefined,
+    patientSex: formData.get("patientSex") || undefined,
+    reasonForVisit: formData.get("reasonForVisit") || undefined,
   });
   if (!parsed.success) {
-    return { error: "Enter the patient's name and phone number." };
+    return { error: "Enter the patient's name and phone number. Age, if given, must be a whole number." };
   }
 
   const { clinicSession } = await loadSessionForStaff(parsed.data.sessionId);
@@ -84,6 +93,9 @@ export async function issueWalkInToken(_prevState: QueueActionState, formData: F
         patientId: existingPatient?.id,
         patientNameSnapshot: parsed.data.patientName,
         patientPhoneSnapshot: parsed.data.patientPhone,
+        patientAgeSnapshot: parsed.data.patientAge,
+        patientSexSnapshot: parsed.data.patientSex,
+        reasonForVisit: parsed.data.reasonForVisit,
         source: "WALK_IN",
         status: "CHECKED_IN",
         issuedAt: now,

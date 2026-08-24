@@ -61,6 +61,23 @@ export async function requireStaffSession(...roles: StaffRole[]): Promise<StaffS
   return session;
 }
 
+// Guard for the doctor-facing screens (/app/doctor*, consultation
+// records). Accepts either a DOCTOR account or an OWNER whose account is
+// linked to a doctor profile — the independent practitioner created by
+// self-signup owns their practice AND is its doctor, and splitting that
+// into two logins would be a fiction. Authorization still depends on
+// doctorId being present, not on the role label alone, and every caller
+// continues to scope its own queries by that doctorId.
+export async function requireDoctorContext(): Promise<StaffSession & { doctorId: string }> {
+  const session = await requireStaffSession("DOCTOR", "OWNER");
+  if (!session.doctorId) {
+    // A clinic owner with no doctor profile: authenticated, but these
+    // screens are meaningless for them. Their own home is /app.
+    redirect("/app");
+  }
+  return { ...session, doctorId: session.doctorId };
+}
+
 export async function clearStaffSession(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(STAFF_COOKIE);

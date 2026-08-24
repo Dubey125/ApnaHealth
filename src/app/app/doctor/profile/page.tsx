@@ -1,4 +1,4 @@
-import { requireStaffSession } from "@/lib/auth/staff";
+import { requireDoctorContext } from "@/lib/auth/staff";
 import { prisma } from "@/lib/db";
 import { DoctorProfileForm } from "./DoctorProfileForm";
 import { UpdatedToast } from "./UpdatedToast";
@@ -6,10 +6,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 
 export default async function DoctorSelfProfilePage() {
-  const session = await requireStaffSession("DOCTOR");
-  if (!session.doctorId) {
-    throw new Error("This staff account is not linked to a doctor profile.");
-  }
+  const session = await requireDoctorContext();
 
   const doctor = await prisma.doctor.findUniqueOrThrow({ where: { id: session.doctorId } });
 

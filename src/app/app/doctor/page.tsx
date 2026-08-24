@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireStaffSession } from "@/lib/auth/staff";
+import { requireDoctorContext } from "@/lib/auth/staff";
 import { prisma } from "@/lib/db";
 import { clinicDayBounds } from "@/lib/clinicDay";
 import { formatClinicTime, formatDurationMinutes, formatPercent } from "@/lib/format";
@@ -19,10 +19,7 @@ import { SessionStatusBadge } from "@/components/ui/StatusBadge";
 // without duplicating that screen's front-desk-facing features (walk-ins,
 // breaks, waiting-list actions), which stay on /app/queue/[sessionId].
 export default async function DoctorDashboardPage() {
-  const session = await requireStaffSession("DOCTOR");
-  if (!session.doctorId) {
-    throw new Error("This staff account is not linked to a doctor profile.");
-  }
+  const session = await requireDoctorContext();
 
   const { start, end } = clinicDayBounds(new Date());
   const sessions = await prisma.session.findMany({

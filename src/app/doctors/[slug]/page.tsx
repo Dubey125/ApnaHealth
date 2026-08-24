@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
-import { formatClinicDate, formatClinicTime, formatFeeMinor } from "@/lib/format";
+import { formatClinicDateWithWeekday, formatClinicTime, formatFeeMinor } from "@/lib/format";
 
 interface DoctorProfilePageProps {
   params: Promise<{ slug: string }>;
@@ -99,7 +99,7 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
         </Card>
 
         <div className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">Book a session</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Availability &amp; booking</h2>
           {upcomingSessions.length === 0 ? (
             <EmptyState
               title="No upcoming sessions scheduled"
@@ -116,14 +116,17 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
                       <div className="flex flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-base font-semibold text-foreground">
-                            {formatClinicDate(session.sessionDate)}
+                            {formatClinicDateWithWeekday(session.sessionDate)}
                           </span>
                           {session.status === "IN_PROGRESS" && <Badge variant="warning">Running now</Badge>}
                           {session.status === "OPEN" && <Badge variant="success">Open for booking</Badge>}
                         </div>
+                        <span className="text-sm font-medium text-foreground">
+                          {formatClinicTime(session.plannedStartAt)} – {formatClinicTime(session.plannedEndAt)}
+                        </span>
                         <span className="text-sm text-muted">
-                          {formatClinicTime(session.plannedStartAt)} – {formatClinicTime(session.plannedEndAt)} ·{" "}
-                          {session.locationLabel}
+                          {doctor.clinic.name} · {session.locationLabel}
+                          {doctor.clinic.areaLabel ? ` · ${doctor.clinic.areaLabel}` : ""}, {doctor.clinic.city}
                         </span>
                         {bookable && (
                           <span className="text-sm text-muted">
@@ -148,6 +151,27 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
             </ul>
           )}
         </div>
+
+        {(doctor.phone || doctor.email) && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold tracking-tight">Contact</h2>
+            <Card className="flex flex-col gap-1 text-sm">
+              {doctor.phone && (
+                <a href={`tel:${doctor.phone}`} className="text-primary underline underline-offset-2">
+                  {doctor.phone}
+                </a>
+              )}
+              {doctor.email && (
+                <a href={`mailto:${doctor.email}`} className="text-primary underline underline-offset-2">
+                  {doctor.email}
+                </a>
+              )}
+              <span className="text-xs text-muted">
+                For appointments, booking a token below is faster than calling.
+              </span>
+            </Card>
+          </div>
+        )}
 
         <div className="flex flex-col gap-3">
           <h2 className="text-lg font-semibold tracking-tight">

@@ -11,7 +11,7 @@ export default async function StaffAppLayout({ children }: { children: React.Rea
   const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: session.clinicId } });
 
   return (
-    <AppShell role={session.role} clinicName={clinic.name}>
+    <AppShell role={session.role} clinicName={clinic.name} hasDoctorProfile={!!session.doctorId}>
       {children}
     </AppShell>
   );
