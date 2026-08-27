@@ -3,11 +3,13 @@ import type { ReactNode } from "react";
 
 export function PageHeader({
   title,
+  description,
   backHref,
   backLabel = "Back",
   action,
 }: {
   title: string;
+  description?: string;
   backHref?: string;
   backLabel?: string;
   action?: ReactNode;
@@ -23,6 +25,7 @@ export function PageHeader({
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {action}
       </div>
+      {description && <p className="max-w-2xl text-sm text-muted">{description}</p>}
     </div>
   );
 }

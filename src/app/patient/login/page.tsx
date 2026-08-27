@@ -1,14 +1,8 @@
-import { SiteHeader } from "@/components/ui/SiteHeader";
-import { LoginForm } from "./LoginForm";
+import { redirect } from "next/navigation";
 
+// Patients now sign in through the single /login front door alongside every
+// other account kind. Kept as a redirect rather than deleted: this path is
+// in the wild (bookmarks, the emailed links, older copies of the footer).
 export default function PatientLoginPage() {
-  return (
-    <>
-      <SiteHeader />
-      <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 px-4 py-12 sm:px-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Patient login</h1>
-        <LoginForm />
-      </main>
-    </>
-  );
+  redirect("/login");
 }

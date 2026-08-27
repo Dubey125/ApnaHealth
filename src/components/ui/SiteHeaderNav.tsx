@@ -12,10 +12,10 @@ interface NavLink {
 
 // Anchor links into the homepage's audience sections — work from any page
 // since Link does a full navigation to "/" plus the hash when not already
-// there. Deliberately not separate routes: there's one shared staff login
-// (/login) for Owner/Doctor/Front Desk, so "For Doctors"/"For Clinics"
-// pointing at distinct pages would imply a role-aware backend this app
-// doesn't have. The audience sections do that differentiation instead.
+// there. Deliberately not separate routes: there is one shared login
+// (/login) for every account kind, so "For Doctors"/"For Clinics" pointing
+// at distinct pages would imply a role-aware backend this app doesn't have.
+// The audience sections do that differentiation instead.
 // Shown to signed-out visitors only — once signed in as a patient, these
 // marketing anchors stop being useful and PATIENT_LINKS takes over.
 const SECTION_LINKS: NavLink[] = [
@@ -39,9 +39,14 @@ const PATIENT_LINKS: NavLink[] = [
 export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  // Signed out, the pair is deliberately "Log in" + "Register" rather than
+  // the old single "Patient login" / "Get Started": a doctor or a clinic
+  // arriving at the site was being told, by the only two controls in the
+  // header, that the product was for patients. One login box now serves
+  // every role, so the header can say so.
   const accountLink: NavLink = signedIn
     ? { href: "/patient/account", label: "My account" }
-    : { href: "/patient/login", label: "Patient login" };
+    : { href: "/login", label: "Log in" };
   const sectionLinks = signedIn ? PATIENT_LINKS : SECTION_LINKS;
   const allLinks = [...sectionLinks, accountLink];
 
@@ -81,10 +86,10 @@ export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
         </Link>
         {!signedIn && (
           <Link
-            href="/get-started"
+            href="/register"
             className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
-            Get Started
+            Register
           </Link>
         )}
       </div>
@@ -125,11 +130,11 @@ export function SiteHeaderNav({ signedIn }: { signedIn: boolean }) {
         ))}
         {!signedIn && (
           <Link
-            href="/get-started"
+            href="/register"
             onClick={() => setOpen(false)}
             className="border-t border-border px-4 py-3 text-sm font-medium text-primary hover:bg-border/40"
           >
-            Get Started
+            Register
           </Link>
         )}
       </div>

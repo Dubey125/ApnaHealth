@@ -5,6 +5,8 @@ import { registerFacility, type RegisterState } from "../actions";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { FormError } from "@/components/ui/FormError";
 import { Button } from "@/components/ui/Button";
+import { PhoneInput } from "@/components/ui/PhoneInput";
+import { IndiaAddressFields } from "@/components/ui/IndiaAddressFields";
 
 const initialState: RegisterState = {};
 
@@ -28,33 +30,12 @@ export function RegisterFacilityForm() {
             </Select>
           </Label>
         </div>
-        <Label htmlFor="reg-address">
-          Address
-          <Input id="reg-address" name="addressLine" required placeholder="Building, street" />
-        </Label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Label htmlFor="reg-area">
-            Area / locality
-            <Input id="reg-area" name="areaLabel" placeholder="e.g. Koregaon Park" />
-          </Label>
-          <Label htmlFor="reg-city">
-            City
-            <Input id="reg-city" name="city" required />
-          </Label>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Label htmlFor="reg-state">
-            State
-            <Input id="reg-state" name="state" required />
-          </Label>
-          <Label htmlFor="reg-postal">
-            PIN code
-            <Input id="reg-postal" name="postalCode" inputMode="numeric" />
-          </Label>
-          <Label htmlFor="reg-phone">
-            Reception phone
-            <Input id="reg-phone" name="phone" type="tel" required />
-          </Label>
+
+        <IndiaAddressFields idPrefix="reg" />
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">Reception phone</span>
+          <PhoneInput name="phone" id="reg-phone" required placeholder="20 1234 5678" />
         </div>
       </div>
 

@@ -65,12 +65,30 @@ async function main() {
       state: "Maharashtra",
       postalCode: "411001",
       phone: "020-12345678",
+      // The seeded clinic is pre-approved so the local app has something
+      // visible in patient search on first run. Facilities created through
+      // the public /register pages start PENDING and stay out of search
+      // until the review team approves them.
+      approvalStatus: "APPROVED",
+      approvalDecidedAt: new Date(),
     },
   });
 
   const ownerPassword = "Owner#12345";
   const frontDeskPassword = "FrontDesk#12345";
   const doctorPassword = "Doctor#12345";
+  const adminPassword = "PlatformAdmin#12345";
+
+  // A platform review-team account, so /admin is reachable in local dev
+  // without running `npm run admin:create` first. Local only — like the
+  // three passwords above, this must never exist on a deployed database.
+  const platformAdmin = await prisma.platformAdmin.create({
+    data: {
+      name: "Review Team",
+      email: "admin@apnahealth.test",
+      passwordHash: await bcrypt.hash(adminPassword, 10),
+    },
+  });
 
   const owner = await prisma.staffUser.create({
     data: {
@@ -187,6 +205,7 @@ async function main() {
   console.log(`  OWNER      ${owner.email} / ${ownerPassword}`);
   console.log(`  FRONT_DESK ${frontDesk.email} / ${frontDeskPassword}`);
   console.log(`  DOCTOR     ${doctorStaff.email} / ${doctorPassword}`);
+  console.log(`  ADMIN      ${platformAdmin.email} / ${adminPassword}  (platform review team, /admin)`);
   console.log("Seeded doctors:", doctor1.name, "(VERIFIED) &", doctor2.name, "(PENDING)");
   console.log("Seeded session:", session.id, "status", session.status);
 

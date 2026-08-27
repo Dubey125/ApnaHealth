@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/auth/session";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 const STAFF_COOKIE = "staff_session";
+const ADMIN_COOKIE = "admin_session";
 
 // Deliberately not importing StaffRole/StaffSession from lib/auth/staff —
 // this file stays decoupled from that module (see the comment on the
@@ -50,6 +51,17 @@ function matchRateLimitRule(pathname: string): RateLimitRule | null {
   if (pathname === "/login" || pathname === "/patient/login") {
     return { limit: 10, windowMs: 5 * 60_000 };
   }
+  // Password reset. /forgot-password is limited harder than login because
+  // each accepted request sends an email — an unlimited endpoint that mails
+  // a third party on demand is a way to use ApnaHealth to spam someone.
+  // /reset-password is limited because the token in the link is the only
+  // thing standing between a guess and an account takeover.
+  if (pathname === "/forgot-password") {
+    return { limit: 5, windowMs: 15 * 60_000 };
+  }
+  if (pathname === "/reset-password") {
+    return { limit: 10, windowMs: 15 * 60_000 };
+  }
   if (pathname === "/patient/register") {
     return { limit: 5, windowMs: 15 * 60_000 };
   }
@@ -77,6 +89,19 @@ function clientKey(request: NextRequest): string {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // The platform review console. Separate cookie from staff_session, so a
+  // clinic session can never satisfy this gate no matter what role it
+  // claims — /admin is not a higher tier of the clinic app, it is a
+  // different application with a different tenancy story.
+  if (pathname.startsWith("/admin")) {
+    const token = request.cookies.get(ADMIN_COOKIE)?.value;
+    const session = token ? await verifySession(token) : null;
+    if (!session) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    return NextResponse.next();
+  }
 
   // Coarse gate only: confirms a valid, unexpired, untampered staff
   // session cookie exists. Role-specific checks happen server-side in
@@ -115,7 +140,10 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/app/:path*",
+    "/admin/:path*",
     "/login",
+    "/forgot-password",
+    "/reset-password",
     "/patient/login",
     "/patient/register",
     "/register/:path*",

@@ -44,6 +44,13 @@ async function uniqueDoctorSlug(name: string): Promise<string> {
 // its first OWNER account together, since a facility with no one able to
 // administer it is not a usable state. The owner then adds doctors and
 // staff through the existing /app screens.
+//
+// The Clinic is created with approvalStatus at its PENDING default and no
+// reviewer set: this endpoint is public, so anyone at all can reach it, and
+// nothing here has been checked by a human. The account works immediately
+// (they can set up doctors, sessions and staff) but the facility is invisible
+// to patients until the ApnaHealth review team approves it — see
+// lib/publicListing.ts, which is what every public query filters on.
 export async function registerFacility(_prevState: RegisterState, formData: FormData): Promise<RegisterState> {
   const parsed = facilitySchema.safeParse({
     facilityName: formData.get("facilityName"),
@@ -112,7 +119,7 @@ export async function registerFacility(_prevState: RegisterState, formData: Form
     role: "OWNER",
     doctorId: null,
   });
-  redirect("/app");
+  redirect("/app?registered=facility");
 }
 
 const doctorSchema = z.object({
@@ -127,6 +134,7 @@ const doctorSchema = z.object({
   areaLabel: z.string().trim().min(1).optional(),
   city: z.string().trim().min(1),
   state: z.string().trim().min(1),
+  postalCode: z.string().trim().min(1).optional(),
   phone: z.string().trim().min(6),
   email: z.string().email(),
   password: z.string().min(8),
@@ -146,7 +154,10 @@ const doctorSchema = z.object({
 // verificationStatus is deliberately left at its PENDING default and no
 // DoctorVerification row is written: CLAUDE.md is explicit that
 // verification must never be fabricated or treated as automatic truth. A
-// self-registered doctor is unverified until a real check is recorded.
+// self-registered doctor is unverified until a real check is recorded by
+// the ApnaHealth review team at /admin/doctors — which is also why the
+// practice itself starts at approvalStatus PENDING and stays out of
+// patient search until reviewed.
 export async function registerDoctor(_prevState: RegisterState, formData: FormData): Promise<RegisterState> {
   const parsed = doctorSchema.safeParse({
     doctorName: formData.get("doctorName"),
@@ -160,6 +171,7 @@ export async function registerDoctor(_prevState: RegisterState, formData: FormDa
     areaLabel: formData.get("areaLabel") || undefined,
     city: formData.get("city"),
     state: formData.get("state"),
+    postalCode: formData.get("postalCode") || undefined,
     phone: formData.get("phone"),
     email: formData.get("email"),
     password: formData.get("password"),
@@ -185,6 +197,7 @@ export async function registerDoctor(_prevState: RegisterState, formData: FormDa
         areaLabel: parsed.data.areaLabel ?? null,
         city: parsed.data.city,
         state: parsed.data.state,
+        postalCode: parsed.data.postalCode ?? null,
         phone: parsed.data.phone,
       },
     });
@@ -231,5 +244,5 @@ export async function registerDoctor(_prevState: RegisterState, formData: FormDa
     role: "OWNER",
     doctorId: created.doctor.id,
   });
-  redirect("/app/doctor");
+  redirect("/app/doctor?registered=doctor");
 }

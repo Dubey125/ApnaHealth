@@ -17,6 +17,8 @@ const updateDoctorProfileSchema = z.object({
   defaultConsultMinutes: z.coerce.number().int().min(1).max(120).optional(),
   bio: z.string().trim().min(1).optional(),
   photoUrl: z.string().trim().url().optional(),
+  phone: z.string().trim().min(6).optional(),
+  email: z.string().email().optional(),
 });
 
 // Doctor-only, scoped to session.doctorId — deliberately excludes name,
@@ -40,6 +42,8 @@ export async function updateDoctorProfile(
     defaultConsultMinutes: formData.get("defaultConsultMinutes") || undefined,
     bio: formData.get("bio") || undefined,
     photoUrl: formData.get("photoUrl") || undefined,
+    phone: formData.get("phone") || undefined,
+    email: formData.get("email") || undefined,
   });
   if (!parsed.success) {
     return { error: "Enter a qualification. Check that any numbers and the photo URL are valid." };
@@ -58,6 +62,8 @@ export async function updateDoctorProfile(
         defaultConsultMinutes: parsed.data.defaultConsultMinutes ?? 6,
         bio: parsed.data.bio ?? null,
         photoUrl: parsed.data.photoUrl ?? null,
+        phone: parsed.data.phone ?? null,
+        email: parsed.data.email ?? null,
       },
     }),
     prisma.auditEvent.create({

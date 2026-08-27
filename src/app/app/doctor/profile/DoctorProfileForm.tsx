@@ -5,6 +5,7 @@ import { updateDoctorProfile, type UpdateDoctorProfileState } from "./actions";
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { FormError } from "@/components/ui/FormError";
 import { Button } from "@/components/ui/Button";
+import { PhoneInput } from "@/components/ui/PhoneInput";
 
 const initialState: UpdateDoctorProfileState = {};
 
@@ -17,6 +18,8 @@ interface DoctorProfileFormProps {
     defaultConsultMinutes: number;
     bio: string | null;
     photoUrl: string | null;
+    phone: string | null;
+    email: string | null;
   };
 }
 
@@ -70,6 +73,17 @@ export function DoctorProfileForm({ doctor }: DoctorProfileFormProps) {
         Languages spoken
         <Input id="profile-languages" name="languagesText" defaultValue={doctor.languagesText ?? ""} placeholder="e.g. English, Hindi" />
       </Label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">Contact number</span>
+          <PhoneInput name="phone" id="profile-phone" defaultNumber={doctor.phone ?? ""} placeholder="98765 43210" />
+        </div>
+        <Label htmlFor="profile-email">
+          Contact email
+          <Input id="profile-email" name="email" type="email" defaultValue={doctor.email ?? ""} />
+        </Label>
+      </div>
 
       <Label htmlFor="profile-photourl">
         Photo URL

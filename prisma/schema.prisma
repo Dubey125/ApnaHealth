@@ -24,6 +24,27 @@ enum VerificationStatus {
   REJECTED
 }
 
+// Platform-side review of a facility that signed itself up. Distinct from
+// VerificationStatus, which is about a *doctor's* medical registration:
+// a facility can be approved to operate on ApnaHealth while its doctors
+// are still unverified, and vice versa.
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Which table a polymorphic row points at. ApnaHealth has three separate
+// account tables by design (Patient, StaffUser, PlatformAdmin) — they have
+// different identifiers, different sessions and different blast radius —
+// so anything shared across all three carries this discriminator instead
+// of a foreign key.
+enum AccountKind {
+  PATIENT
+  STAFF
+  ADMIN
+}
+
 enum SessionStatus {
   SCHEDULED
   OPEN
@@ -78,22 +99,34 @@ enum FacilityType {
 }
 
 model Clinic {
-  id          String       @id @default(cuid())
-  name        String
-  facilityType FacilityType @default(CLINIC)
-  addressLine String
+  id                String         @id @default(cuid())
+  name              String
+  facilityType      FacilityType   @default(CLINIC)
+  addressLine       String
   // Locality / neighbourhood ("Koregaon Park"), the unit people actually
   // search by in Indian cities — city alone is too coarse in a metro and
   // the full addressLine is too specific to match on.
-  areaLabel   String?
-  city        String
-  state       String
-  postalCode  String?
-  phone       String
-  timezone    String       @default("Asia/Kolkata")
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+  areaLabel         String?
+  city              String
+  state             String
+  postalCode        String?
+  phone             String
+  timezone          String         @default("Asia/Kolkata")
+  isActive          Boolean        @default(true)
+  // Platform review gate for self-serve signup. Anyone can create a
+  // facility from the public /register pages, so "a row exists" must not
+  // by itself mean "listed to patients" — every public discovery and
+  // booking query filters on APPROVED. isActive stays separate: it is the
+  // facility's own on/off switch (temporarily closed), not our decision.
+  // Existing rows were backfilled to APPROVED by the migration; only new
+  // signups start PENDING.
+  approvalStatus    ApprovalStatus @default(PENDING)
+  approvalDecidedAt DateTime?      @db.Timestamptz(3)
+  approvalNotes     String?
+  reviewedByAdminId String?
+  reviewedByAdmin   PlatformAdmin? @relation("ClinicReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
 
   staffUsers          StaffUser[]
   doctors             Doctor[]
@@ -167,8 +200,17 @@ model Doctor {
   defaultConsultMinutes Int                @default(6)
   verificationStatus    VerificationStatus @default(PENDING)
   verifiedAt            DateTime?          @db.Timestamptz(3)
+  // Exactly one of these two is set on a verified doctor. Clinic owners
+  // could originally verify their own doctors, which self-signup turned
+  // into self-verification (a doctor who registers becomes the OWNER of
+  // their own practice) — CLAUDE.md: verification "must never be
+  // fabricated or treated as automatic truth". Medical-registration checks
+  // are now the platform's call; the staff column is kept so historic
+  // clinic-recorded checks stay attributable.
   verifiedByStaffUserId String?
   verifiedByStaffUser   StaffUser?         @relation("DoctorVerifiedBy", fields: [verifiedByStaffUserId], references: [id], onDelete: SetNull)
+  verifiedByAdminId     String?
+  verifiedByAdmin       PlatformAdmin?     @relation("DoctorVerifiedByAdmin", fields: [verifiedByAdminId], references: [id], onDelete: SetNull)
   verificationSource    String?
   verificationNotes     String?
   isActive              Boolean            @default(true)
@@ -191,8 +233,13 @@ model DoctorVerification {
   id                        String             @id @default(cuid())
   doctorId                  String
   doctor                    Doctor             @relation(fields: [doctorId], references: [id])
-  checkedByStaffUserId      String
-  checkedByStaffUser        StaffUser          @relation(fields: [checkedByStaffUserId], references: [id])
+  // Nullable since the platform review team took over verification, but
+  // one of the two reviewer columns is always populated (enforced in the
+  // action that writes this row, which is the only writer).
+  checkedByStaffUserId      String?
+  checkedByStaffUser        StaffUser?         @relation(fields: [checkedByStaffUserId], references: [id])
+  checkedByAdminId          String?
+  checkedByAdmin            PlatformAdmin?     @relation(fields: [checkedByAdminId], references: [id])
   status                    VerificationStatus
   registrationNumberChecked String
   sourceName                String
@@ -204,11 +251,11 @@ model DoctorVerification {
 }
 
 model Session {
-  id       String @id @default(cuid())
-  clinicId String
-  clinic   Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  doctorId String
-  doctor   Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  clinicId       String
+  clinic         Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId       String
+  doctor         Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   // Public identifier for /book/[sessionId] (linked from the public doctor
   // profile page) — same reasoning as Doctor.slug: DATA_MODEL.md's "internal
   // IDs never go into public URLs" rules out routing on `id` directly.
@@ -414,4 +461,65 @@ model AuditEvent {
   metadata    Json?
 
   @@index([clinicId, occurredAt])
+}
+
+// The ApnaHealth review team: staff of the platform, not of any clinic.
+// Deliberately a separate table rather than a fourth StaffRole, because
+// StaffUser.clinicId is required and every staff query is scoped by it —
+// bolting a tenant-less role onto that model would put a hole straight
+// through the isolation invariant. A PlatformAdmin has its own table, its
+// own session cookie and its own /admin routes, and can never be produced
+// by public signup: accounts are created out-of-band (npm run admin:create).
+model PlatformAdmin {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  reviewedClinics     Clinic[]             @relation("ClinicReviewedBy")
+  verifiedDoctors     Doctor[]             @relation("DoctorVerifiedByAdmin")
+  doctorVerifications DoctorVerification[]
+  adminEvents         AdminEvent[]
+}
+
+// AuditEvent is scoped to a clinic by design (DATA_MODEL.md), so it cannot
+// record platform-level actions — approving a facility is an act *about* a
+// clinic by someone outside it. This is the platform-side equivalent, and
+// is likewise append-only.
+model AdminEvent {
+  id         String        @id @default(cuid())
+  adminId    String
+  admin      PlatformAdmin @relation(fields: [adminId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  occurredAt DateTime      @db.Timestamptz(3)
+  metadata   Json?
+
+  @@index([occurredAt])
+}
+
+// Single-use, short-lived password reset grant. Stores only a SHA-256 hash
+// of the token — the plaintext exists solely in the emailed link, so a leak
+// of this table cannot be replayed, the same reasoning as passwordHash.
+//
+// Polymorphic (kind + accountId, no FK) because it serves all three account
+// tables; see AccountKind. Rows are never updated except to stamp usedAt,
+// and expired ones are pruned opportunistically when a reset is requested.
+model PasswordResetToken {
+  id          String      @id @default(cuid())
+  kind        AccountKind
+  accountId   String
+  tokenHash   String      @unique
+  expiresAt   DateTime    @db.Timestamptz(3)
+  usedAt      DateTime?   @db.Timestamptz(3)
+  requestedIp String?
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@index([kind, accountId])
+  @@index([expiresAt])
 }

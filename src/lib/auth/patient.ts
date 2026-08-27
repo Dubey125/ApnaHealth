@@ -34,7 +34,7 @@ export async function getPatientSession(): Promise<PatientSession | null> {
 export async function requirePatientSession(): Promise<PatientSession> {
   const session = await getPatientSession();
   if (!session) {
-    redirect("/patient/login");
+    redirect("/login");
   }
   return session;
 }

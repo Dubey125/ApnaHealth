@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatClinicDateWithWeekday, formatClinicTime, formatFeeMinor } from "@/lib/format";
+import { LISTED_DOCTOR } from "@/lib/publicListing";
 
 interface DoctorProfilePageProps {
   params: Promise<{ slug: string }>;
@@ -27,7 +28,7 @@ export default async function DoctorProfilePage({ params }: DoctorProfilePagePro
   const { slug } = await params;
 
   const doctor = await prisma.doctor.findFirst({
-    where: { slug, isActive: true, clinic: { isActive: true } },
+    where: { slug, ...LISTED_DOCTOR },
     include: { clinic: true },
   });
 

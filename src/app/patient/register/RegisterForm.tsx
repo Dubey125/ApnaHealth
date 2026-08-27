@@ -38,7 +38,7 @@ export function RegisterForm() {
       </form>
       <p className="text-sm text-muted">
         Already have an account?{" "}
-        <Link href="/patient/login" className="font-medium text-primary underline underline-offset-2">
+        <Link href="/login" className="font-medium text-primary underline underline-offset-2">
           Sign in
         </Link>
       </p>

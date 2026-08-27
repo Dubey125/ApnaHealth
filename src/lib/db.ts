@@ -7,7 +7,27 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 // pg's default pool size (10) isn't enough headroom for a burst of
 // concurrent interactive transactions (e.g. several walk-ins issued at
 // once) each holding a connection for the transaction's duration.
-const adapter = new PrismaPg({ connectionString: getDatabaseUrl(), max: 20 });
+//
+// idleTimeoutMillis is the important one on Neon: its serverless compute
+// suspends after a few minutes of inactivity and drops the TCP sessions
+// behind it, but pg has no way to know that — so the pool keeps handing
+// out sockets the server has already closed, and the request fails
+// instantly with P1001 / DatabaseNotReachable rather than reconnecting.
+// Retiring idle connections well before Neon suspends means the pool
+// opens a fresh one instead, which succeeds. (Observed directly: a raw
+// connect took 3.7s and worked, while the app's pooled connection failed
+// in 271ms.)
+//
+// connectionTimeoutMillis covers the other half — a genuinely cold Neon
+// compute can take several seconds to wake, comfortably past the 5s
+// default. Set here rather than as a connect_timeout query parameter so
+// it holds regardless of how DATABASE_URL happens to be written.
+const adapter = new PrismaPg({
+  connectionString: getDatabaseUrl(),
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 30_000,
+});
 
 // Defaults (maxWait 2s, timeout 5s) are too tight for Neon's serverless
 // connection latency, observed throughout this project to range from

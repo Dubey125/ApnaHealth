@@ -5,6 +5,8 @@ import { createDoctor, type CreateDoctorState } from "./actions";
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { FormError } from "@/components/ui/FormError";
 import { Button } from "@/components/ui/Button";
+import { SpecialtySelect } from "@/components/ui/SpecialtySelect";
+import { PhoneInput } from "@/components/ui/PhoneInput";
 
 const initialState: CreateDoctorState = {};
 
@@ -20,10 +22,7 @@ export function DoctorForm() {
           Name
           <Input id="doctor-name" name="name" required placeholder="Dr. Firstname Lastname" />
         </Label>
-        <Label htmlFor="doctor-specialty">
-          Specialty
-          <Input id="doctor-specialty" name="specialty" required placeholder="e.g. Cardiologist" />
-        </Label>
+        <SpecialtySelect id="doctor-specialty" />
       </div>
 
       <Label htmlFor="doctor-qualification">
@@ -61,6 +60,17 @@ export function DoctorForm() {
         Languages spoken (optional)
         <Input id="doctor-languages" name="languagesText" placeholder="e.g. English, Hindi" />
       </Label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">Contact number (optional)</span>
+          <PhoneInput name="phone" id="doctor-phone" placeholder="98765 43210" />
+        </div>
+        <Label htmlFor="doctor-email">
+          Contact email (optional)
+          <Input id="doctor-email" name="email" type="email" />
+        </Label>
+      </div>
 
       <Label htmlFor="doctor-photourl">
         Photo URL (optional)

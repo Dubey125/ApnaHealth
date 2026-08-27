@@ -3,13 +3,8 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaffSession, assertClinicAccess } from "@/lib/auth/staff";
-import { verificationSchema, computeVerifiedAt } from "@/lib/verification";
+import { requireStaffSession } from "@/lib/auth/staff";
 import { slugify } from "@/lib/slugify";
-
-export interface VerifyDoctorState {
-  error?: string;
-}
 
 export interface CreateDoctorState {
   error?: string;
@@ -26,6 +21,8 @@ const createDoctorSchema = z.object({
   consultationFeeRupees: z.coerce.number().min(0).optional(),
   bio: z.string().trim().min(1).optional(),
   photoUrl: z.string().trim().url().optional(),
+  phone: z.string().trim().min(6).optional(),
+  email: z.string().email().optional(),
   defaultConsultMinutes: z.coerce.number().int().min(1).max(120).optional(),
 });
 
@@ -51,6 +48,8 @@ export async function createDoctor(_prevState: CreateDoctorState, formData: Form
     consultationFeeRupees: formData.get("consultationFeeRupees") || undefined,
     bio: formData.get("bio") || undefined,
     photoUrl: formData.get("photoUrl") || undefined,
+    phone: formData.get("phone") || undefined,
+    email: formData.get("email") || undefined,
     defaultConsultMinutes: formData.get("defaultConsultMinutes") || undefined,
   });
   if (!parsed.success) {
@@ -85,6 +84,8 @@ export async function createDoctor(_prevState: CreateDoctorState, formData: Form
           parsed.data.consultationFeeRupees != null ? Math.round(parsed.data.consultationFeeRupees * 100) : undefined,
         bio: parsed.data.bio,
         photoUrl: parsed.data.photoUrl,
+        phone: parsed.data.phone,
+        email: parsed.data.email,
         defaultConsultMinutes: parsed.data.defaultConsultMinutes,
       },
     });
@@ -103,72 +104,4 @@ export async function createDoctor(_prevState: CreateDoctorState, formData: Form
   });
 
   redirect(`/app/doctors?created=${doctor.id}`);
-}
-
-export async function recordDoctorVerification(
-  _prevState: VerifyDoctorState,
-  formData: FormData,
-): Promise<VerifyDoctorState> {
-  const session = await requireStaffSession("OWNER");
-
-  const parsed = verificationSchema.safeParse({
-    doctorId: formData.get("doctorId"),
-    status: formData.get("status"),
-    registrationNumberChecked: formData.get("registrationNumberChecked"),
-    sourceName: formData.get("sourceName"),
-    sourceReference: formData.get("sourceReference") || undefined,
-    notes: formData.get("notes") || undefined,
-  });
-  if (!parsed.success) {
-    return { error: "Provide the registration number you checked, the source you checked it against, and a status." };
-  }
-
-  const doctor = await prisma.doctor.findUnique({ where: { id: parsed.data.doctorId } });
-  if (!doctor) {
-    return { error: "Doctor not found." };
-  }
-  assertClinicAccess(session, doctor.clinicId);
-
-  const now = new Date();
-  await prisma.$transaction([
-    prisma.doctorVerification.create({
-      data: {
-        doctorId: doctor.id,
-        checkedByStaffUserId: session.staffUserId,
-        status: parsed.data.status,
-        registrationNumberChecked: parsed.data.registrationNumberChecked,
-        sourceName: parsed.data.sourceName,
-        sourceReference: parsed.data.sourceReference,
-        checkedAt: now,
-        notes: parsed.data.notes,
-      },
-    }),
-    prisma.doctor.update({
-      where: { id: doctor.id },
-      data: {
-        verificationStatus: parsed.data.status,
-        verifiedAt: computeVerifiedAt(parsed.data.status, now),
-        verifiedByStaffUserId: session.staffUserId,
-        verificationSource: parsed.data.sourceName,
-        verificationNotes: parsed.data.notes ?? null,
-      },
-    }),
-    prisma.auditEvent.create({
-      data: {
-        clinicId: doctor.clinicId,
-        actorUserId: session.staffUserId,
-        action: "DOCTOR_VERIFICATION_RECORDED",
-        entityType: "Doctor",
-        entityId: doctor.id,
-        occurredAt: now,
-        metadata: {
-          status: parsed.data.status,
-          registrationNumberChecked: parsed.data.registrationNumberChecked,
-          sourceName: parsed.data.sourceName,
-        },
-      },
-    }),
-  ]);
-
-  redirect(`/app/doctors/${doctor.id}`);
 }

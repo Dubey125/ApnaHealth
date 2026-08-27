@@ -68,7 +68,49 @@ id, tokenId, sessionId, modelVersion, predictedStartAt, windowStartAt, windowEnd
 ## AuditEvent
 id, clinicId, actorUserId?, action, entityType, entityId?, occurredAt, metadata json
 
+## PlatformAdmin
+ApnaHealth's own review team — NOT a clinic role, and not a fourth StaffRole.
+id, name, email (unique), passwordHash, isActive, lastLoginAt?, createdAt, updatedAt
+
+Kept in its own table precisely because of the "every protected query is
+scoped by clinicId" rule below: StaffUser.clinicId is required, and a
+tenant-less role bolted onto StaffUser would make that rule unenforceable.
+A PlatformAdmin has its own session cookie and reaches only /admin, whose
+queries are intentionally cross-tenant and are limited to facility approval
+and doctor verification. See ACCESS_MATRIX.md.
+
+## AdminEvent
+Append-only, the platform-side counterpart to AuditEvent — needed because
+AuditEvent is scoped to a clinic and approving a facility is an act *about*
+a clinic by someone outside it.
+id, adminId, action, entityType, entityId?, occurredAt, metadata json
+
+## PasswordResetToken
+id, kind PATIENT|STAFF|ADMIN, accountId, tokenHash (unique), expiresAt, usedAt?, requestedIp?, createdAt
+
+Polymorphic by (kind, accountId) with no foreign key, because it serves all
+three account tables. Stores only a SHA-256 hash of the token: the plaintext
+exists solely in the emailed link, so this table cannot be replayed.
+Single-use and one hour long.
+
+## Clinic — platform approval fields
+approvalStatus PENDING|APPROVED|REJECTED, approvalDecidedAt?, approvalNotes?, reviewedByAdminId?
+
+Separate from `isActive`: isActive is the facility's own switch, approval is
+ApnaHealth's decision about them. Public listing requires both — the single
+definition lives in src/lib/publicListing.ts.
+
+## Doctor / DoctorVerification — reviewer attribution
+Doctor gains verifiedByAdminId?; DoctorVerification gains checkedByAdminId?
+and relaxes checkedByStaffUserId to optional. Exactly one reviewer column is
+set per row, enforced by the single action that writes it. Both columns are
+kept so historic clinic-recorded checks stay attributable after verification
+moved to the platform review team.
+
 Rules:
 - Internal IDs never go into public URLs.
-- Every protected query is scoped by clinicId.
+- Every protected query is scoped by clinicId. The one deliberate exception
+  is /admin, which exists to look across tenants — and is confined to
+  facility approval and doctor verification. It never reads clinical data.
 - QueueEvent is never updated/deleted.
+- AdminEvent is never updated/deleted.

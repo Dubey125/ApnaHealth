@@ -5,6 +5,7 @@ import { SiteHeader } from "@/components/ui/SiteHeader";
 import { Card } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
+import { LISTED_SESSION } from "@/lib/publicListing";
 
 interface BookPageProps {
   params: Promise<{ sessionId: string }>;
@@ -14,7 +15,10 @@ export default async function BookPage({ params }: BookPageProps) {
   const { sessionId: sessionPublicId } = await params;
 
   const session = await prisma.session.findFirst({
-    where: { publicId: sessionPublicId },
+    // LISTED_SESSION as well as the public id: a booking link to a
+    // facility that has not been approved (or has been rejected) must
+    // 404, not quietly render a bookable page.
+    where: { publicId: sessionPublicId, ...LISTED_SESSION },
     include: { doctor: true, clinic: true },
   });
   if (!session) {

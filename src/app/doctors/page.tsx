@@ -10,6 +10,7 @@ import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/components/ui/cn";
 import { formatClinicDate, formatClinicTime, formatFeeMinor } from "@/lib/format";
+import { LISTED_CLINIC, LISTED_DOCTOR } from "@/lib/publicListing";
 
 const filtersSchema = z.object({
   specialty: z.string().trim().min(1).optional(),
@@ -64,14 +65,14 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
       }
     : {};
 
-  const listedDoctorWhere = { isActive: true, clinic: { isActive: true } } as const;
+  const listedDoctorWhere = LISTED_DOCTOR;
 
   const [doctors, specialtyGroups, cityRows, clinicDoctorCount, hospitalDoctorCount] = await Promise.all([
     prisma.doctor.findMany({
       where: {
         ...listedDoctorWhere,
         clinic: {
-          isActive: true,
+          ...LISTED_CLINIC,
           ...(filters.facility ? { facilityType: filters.facility } : {}),
           ...locationWhere,
         },
@@ -91,7 +92,7 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
       orderBy: { specialty: "asc" },
     }),
     prisma.clinic.findMany({
-      where: { isActive: true, doctors: { some: { isActive: true } } },
+      where: { ...LISTED_CLINIC, doctors: { some: { isActive: true } } },
       distinct: ["city"],
       select: { city: true },
       orderBy: { city: "asc" },
@@ -99,8 +100,8 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
     // Doctor counts per facility type. Counting doctors (not facilities)
     // because that is what the list below shows — a "Hospitals 0" chip
     // that still had hospitals but no listed doctors would be misleading.
-    prisma.doctor.count({ where: { isActive: true, clinic: { isActive: true, facilityType: "CLINIC" } } }),
-    prisma.doctor.count({ where: { isActive: true, clinic: { isActive: true, facilityType: "HOSPITAL" } } }),
+    prisma.doctor.count({ where: { isActive: true, clinic: { ...LISTED_CLINIC, facilityType: "CLINIC" } } }),
+    prisma.doctor.count({ where: { isActive: true, clinic: { ...LISTED_CLINIC, facilityType: "HOSPITAL" } } }),
   ]);
 
   // "Next available" per doctor — the soonest session still ahead of us,

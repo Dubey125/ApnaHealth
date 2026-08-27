@@ -5,6 +5,9 @@ import { registerDoctor, type RegisterState } from "../actions";
 import { Input, Label } from "@/components/ui/Input";
 import { FormError } from "@/components/ui/FormError";
 import { Button } from "@/components/ui/Button";
+import { SpecialtySelect } from "@/components/ui/SpecialtySelect";
+import { PhoneInput } from "@/components/ui/PhoneInput";
+import { IndiaAddressFields } from "@/components/ui/IndiaAddressFields";
 
 const initialState: RegisterState = {};
 
@@ -19,16 +22,15 @@ export function RegisterDoctorForm() {
           Full name
           <Input id="rd-name" name="doctorName" required placeholder="Dr. Firstname Lastname" />
         </Label>
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <Label htmlFor="rd-specialty">
-            Specialty
-            <Input id="rd-specialty" name="specialty" required placeholder="e.g. General Physician" />
-          </Label>
+          <SpecialtySelect id="rd-specialty" />
           <Label htmlFor="rd-qual">
             Qualification
             <Input id="rd-qual" name="qualificationText" required placeholder="e.g. MBBS, MD" />
           </Label>
         </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <Label htmlFor="rd-regnum">
             Medical registration number
@@ -39,10 +41,11 @@ export function RegisterDoctorForm() {
             <Input id="rd-council" name="registrationCouncil" placeholder="e.g. Maharashtra Medical Council" />
           </Label>
         </div>
-        <Label htmlFor="rd-docphone">
-          Contact number shown on your profile
-          <Input id="rd-docphone" name="doctorPhone" type="tel" />
-        </Label>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">Contact number shown on your profile</span>
+          <PhoneInput name="doctorPhone" id="rd-docphone" placeholder="98765 43210" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 border-t border-border pt-4">
@@ -51,28 +54,13 @@ export function RegisterDoctorForm() {
           Practice / clinic name
           <Input id="rd-practice" name="practiceName" required placeholder="e.g. Dr. Sharma's Clinic" />
         </Label>
-        <Label htmlFor="rd-address">
-          Address
-          <Input id="rd-address" name="addressLine" required />
-        </Label>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Label htmlFor="rd-area">
-            Area / locality
-            <Input id="rd-area" name="areaLabel" placeholder="e.g. Koregaon Park" />
-          </Label>
-          <Label htmlFor="rd-city">
-            City
-            <Input id="rd-city" name="city" required />
-          </Label>
-          <Label htmlFor="rd-state">
-            State
-            <Input id="rd-state" name="state" required />
-          </Label>
+
+        <IndiaAddressFields idPrefix="rd" />
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">Practice phone</span>
+          <PhoneInput name="phone" id="rd-phone" required placeholder="20 1234 5678" />
         </div>
-        <Label htmlFor="rd-phone">
-          Practice phone
-          <Input id="rd-phone" name="phone" type="tel" required />
-        </Label>
       </div>
 
       <div className="flex flex-col gap-4 border-t border-border pt-4">

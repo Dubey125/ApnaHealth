@@ -12,16 +12,15 @@ interface FooterColumn {
 
 // Multi-column footer reflecting the four audiences, not just patients.
 // Every link is a route that actually exists in this app — no invented
-// Privacy/Terms/About/Contact pages. There is genuinely no separate URL
-// per staff role (Owner/Doctor/Front Desk all sign in at /login), so the
-// Doctors and Clinics columns both point there; the column headings and
-// surrounding copy carry the audience distinction instead.
+// Privacy/Terms/About/Contact pages. There is genuinely one login for every
+// account kind, so all three columns point at /login; the column headings
+// and surrounding copy carry the audience distinction instead.
 const COLUMNS: FooterColumn[] = [
   {
     heading: "Patients",
     links: [
       { href: "/doctors", label: "Find a doctor" },
-      { href: "/patient/login", label: "Patient login" },
+      { href: "/login", label: "Patient login" },
       { href: "/patient/register", label: "Create an account" },
     ],
   },
