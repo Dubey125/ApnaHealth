@@ -3,9 +3,31 @@ import { nanoid } from "nanoid";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { slugify } from "../src/lib/slugify";
+import { checkSeedTarget } from "../src/lib/seedGuard";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+// Development passwords come from the environment, never from this file.
+// They used to be string literals here — which put four working logins into
+// a public git repository, one of them (since removed) a platform-wide
+// admin. Anything committed is public forever, so the only safe number of
+// credentials in source is zero.
+//
+// Fail-closed: an unset variable stops the seed rather than falling back to
+// a default, because a default would be exactly the committed credential
+// this change exists to remove. Values are read but never printed.
+function requiredSeedPassword(name: string): string {
+  const value = process.env[name];
+  if (!value || value.length < 8) {
+    throw new Error(
+      `${name} must be set to at least 8 characters before seeding.
+` +
+        `  These are local development logins — see .env.example. Never reuse a real password.`,
+    );
+  }
+  return value;
+}
 
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 
@@ -74,21 +96,14 @@ async function main() {
     },
   });
 
-  const ownerPassword = "Owner#12345";
-  const frontDeskPassword = "FrontDesk#12345";
-  const doctorPassword = "Doctor#12345";
-  const adminPassword = "PlatformAdmin#12345";
-
-  // A platform review-team account, so /admin is reachable in local dev
-  // without running `npm run admin:create` first. Local only — like the
-  // three passwords above, this must never exist on a deployed database.
-  const platformAdmin = await prisma.platformAdmin.create({
-    data: {
-      name: "Review Team",
-      email: "admin@apnahealth.test",
-      passwordHash: await bcrypt.hash(adminPassword, 10),
-    },
-  });
+  // No PlatformAdmin is created here, deliberately.
+  //
+  // A PlatformAdmin can approve any facility and mark any doctor verified
+  // across every tenant on ApnaHealth — it is the one account whose reach
+  // is not bounded by a clinicId. An account with that much power must
+  // never come from a script whose contents are public. The only way to
+  // create one is `npm run admin:create`, which requires database
+  // credentials and reads the password from the environment.
 
   const owner = await prisma.staffUser.create({
     data: {
@@ -202,10 +217,13 @@ async function main() {
 
   console.log("Seeded clinic:", clinic.name, clinic.id);
   console.log("Seeded staff logins:");
-  console.log(`  OWNER      ${owner.email} / ${ownerPassword}`);
-  console.log(`  FRONT_DESK ${frontDesk.email} / ${frontDeskPassword}`);
-  console.log(`  DOCTOR     ${doctorStaff.email} / ${doctorPassword}`);
-  console.log(`  ADMIN      ${platformAdmin.email} / ${adminPassword}  (platform review team, /admin)`);
+  // Emails only. The passwords are the ones the operator put in their own
+  // environment, so echoing them back would only put them into a terminal
+  // scrollback and any CI log for no benefit.
+  console.log(`  OWNER      ${owner.email}      (SEED_OWNER_PASSWORD)`);
+  console.log(`  FRONT_DESK ${frontDesk.email}  (SEED_FRONT_DESK_PASSWORD)`);
+  console.log(`  DOCTOR     ${doctorStaff.email}     (SEED_DOCTOR_PASSWORD)`);
+  console.log("  No platform admin is seeded — create one with: npm run admin:create");
   console.log("Seeded doctors:", doctor1.name, "(VERIFIED) &", doctor2.name, "(PENDING)");
   console.log("Seeded session:", session.id, "status", session.status);
 
@@ -226,9 +244,35 @@ async function main() {
   );
 }
 
+// The guard runs BEFORE main(), and before any connection is opened — a
+// destructive script must decide whether it is allowed to run at all
+// before it does anything at all. Exits non-zero so a CI step or a shell
+// `&&` chain stops here rather than continuing as though it had seeded.
+const target = checkSeedTarget({
+  databaseUrl: process.env.DATABASE_URL,
+  nodeEnv: process.env.NODE_ENV,
+  allowHost: process.env.SEED_ALLOW_HOST,
+});
+if (!target.allowed) {
+  console.error(`Refusing to seed.
+${target.reason}`);
+  process.exit(1);
+}
+
+// Read here, not inside main(): main() deletes the existing clinic and its
+// clinical records before it ever gets to creating staff, so a missing
+// SEED_OWNER_PASSWORD discovered halfway through would wipe the database
+// and then abort, leaving nothing behind. Every precondition this script
+// has is checked before it touches a single row.
+const ownerPassword = requiredSeedPassword("SEED_OWNER_PASSWORD");
+const frontDeskPassword = requiredSeedPassword("SEED_FRONT_DESK_PASSWORD");
+const doctorPassword = requiredSeedPassword("SEED_DOCTOR_PASSWORD");
+
+console.log(`Seeding ${target.host} — this deletes and recreates "${SEEDED_CLINIC_NAME}".`);
+
 main()
   .catch((err) => {
-    console.error(err);
+    console.error(err instanceof Error ? err.message : err);
     process.exitCode = 1;
   })
   .finally(async () => {

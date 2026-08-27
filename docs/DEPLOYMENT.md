@@ -23,8 +23,14 @@ and Preview both need them):
 |---|---|---|
 | `DATABASE_URL` | yes | The connection string from step 1. |
 | `SESSION_SECRET` | yes | `openssl rand -base64 32`. Must be at least 32 characters — validated at server boot (`src/instrumentation.ts` calls `validateEnv()`), so a missing or weak secret fails the deployment immediately instead of surfacing as a confusing error on the first login attempt. |
+| `RESEND_API_KEY` | yes in production | Sends password-reset links (`src/lib/mailer.ts`), via Resend's HTTP API — no npm package. **Not** validated at boot, because the app is fully usable without it; the cost of leaving it unset is that `/forgot-password` refuses every request instead of silently dropping it, so nobody can recover an account. Blank in development prints the reset link to the dev server console instead. |
+| `MAIL_FROM` | recommended | From address for those emails, e.g. `ApnaHealth <no-reply@yourdomain.in>`. Must be on a domain verified with the mail provider. Falls back to Resend's shared onboarding sender, which is fine for a smoke test and not for production. |
 
-Never commit `.env`. `.env.example` documents the shape without real values.
+The `SEED_*` variables in `.env.example` are local-development only and must
+never be set in a deployed environment. See step 4.
+
+Never commit `.env`. `.env.example` is committed (via the `!.env.example`
+negation in `.gitignore`) and documents every variable name with no values.
 
 ## 3. Run migrations against production
 
@@ -44,6 +50,59 @@ DATABASE_URL="<production URL>" npx prisma migrate deploy
 live-verification testing done during this project's phased build. Do not
 run `npx prisma db seed` (or anything that imports `prisma/seed.ts`) against
 a production `DATABASE_URL`, ever.
+
+This is now enforced, not merely documented (`src/lib/seedGuard.ts`). The
+seed refuses to run unless **both** hold:
+
+- `NODE_ENV` is not `production` — no override exists for this;
+- the `DATABASE_URL` host is loopback, **or** the operator has named that
+  exact host in `SEED_ALLOW_HOST`. A remote development database (a Neon dev
+  branch, say) is still a shared server, so it has to be named explicitly:
+  `SEED_ALLOW_HOST=<host> npx prisma db seed`.
+
+It also requires `SEED_OWNER_PASSWORD`, `SEED_FRONT_DESK_PASSWORD` and
+`SEED_DOCTOR_PASSWORD`, checked *before* anything is deleted. There are no
+passwords in `prisma/seed.ts`.
+
+The seed does **not** create a platform admin. A `PlatformAdmin` can approve
+any facility and verify any doctor across every tenant, so it is never
+created by a script — see step 4a.
+
+## 4a. Create the platform review-team account
+
+`/admin` — facility approval and doctor verification — is gated on a
+`PlatformAdmin`, a separate table from `StaffUser` with its own session
+cookie. There is deliberately **no route on the internet that creates one**,
+because it is the only account whose reach is not bounded by a `clinicId`.
+
+Create it from a machine that already holds the database credentials:
+
+```
+ADMIN_EMAIL=you@yourdomain.in ADMIN_NAME="Your Name" ADMIN_PASSWORD='...' npm run admin:create
+```
+
+The password comes from the environment rather than an argument so it does
+not land in shell history or `ps` output, and must be at least 12
+characters. Re-running it for an existing email resets that admin's
+password, which doubles as the recovery path if the review team locks
+itself out.
+
+> **Historical credential exposure.** An earlier revision of
+> `prisma/seed.ts` created a `PlatformAdmin` with the address
+> `admin@apnahealth.test` and a hardcoded password, and that revision was
+> pushed to a public repository. Removing it from the current file does not
+> un-publish it — the credential is recoverable from git history and must
+> be treated as known to the public. Before or immediately after any
+> deployment, confirm no such row exists:
+>
+> ```sql
+> SELECT email, "createdAt" FROM "PlatformAdmin" WHERE email = 'admin@apnahealth.test';
+> ```
+>
+> If it returns a row, delete that account (or reset its password via
+> `npm run admin:create`) and review `AdminEvent` for actions attributed to
+> it. A database that was only ever migrated — never seeded — cannot
+> contain it.
 
 ## 5. Deploy
 

@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import type { SessionStatus } from "@/generated/prisma/enums";
 
 // The single definition of "visible to the public".
 //
@@ -29,3 +30,27 @@ export const LISTED_SESSION = {
   clinic: LISTED_CLINIC,
   doctor: { isActive: true },
 } as const satisfies Prisma.SessionWhereInput;
+
+// A session the public may still take a token for. Status lives here with
+// the rest of the listing rules rather than inline at each call site,
+// because "can the public book this?" is one question with two halves —
+// is the facility listed, and is the session open — and splitting them
+// across two files is how the two got out of step in the first place.
+export const BOOKABLE_SESSION_STATUSES = ["OPEN", "IN_PROGRESS"] as const;
+
+export function isBookableSessionStatus(status: SessionStatus): boolean {
+  return (BOOKABLE_SESSION_STATUSES as readonly SessionStatus[]).includes(status);
+}
+
+// The complete public-booking gate, as a single where-clause.
+//
+// This exists because gating only the /book page was not enough: the page
+// and its server action are independent entry points, the page hands the
+// session's internal id to the browser in a hidden field, and the action
+// re-read that id with nothing but a status check. A facility that was
+// approved, shared its booking link, and was later REJECTED went on
+// accepting public bookings through the action alone. An action must never
+// infer its authorization from the page that rendered its form.
+export function bookableSessionWhere(sessionId: string): Prisma.SessionWhereInput {
+  return { id: sessionId, ...LISTED_SESSION };
+}

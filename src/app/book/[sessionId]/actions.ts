@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { prisma } from "@/lib/db";
 import { allocateNextTokenNumber } from "@/lib/queue/tokenNumbering";
 import { getPatientSession } from "@/lib/auth/patient";
+import { bookableSessionWhere, isBookableSessionStatus } from "@/lib/publicListing";
 
 export interface BookingState {
   error?: string;
@@ -29,11 +30,27 @@ export async function selfBookToken(_prevState: BookingState, formData: FormData
     return { error: "Enter your name and phone number." };
   }
 
-  const session = await prisma.session.findUnique({ where: { id: parsed.data.sessionId } });
+  // The facility-approval gate is enforced HERE, not inherited from the
+  // page that rendered this form. /book/[sessionId] is one entry point and
+  // this action is another: the page puts the session's internal id into a
+  // hidden field, so anyone who has ever loaded a booking link holds an id
+  // they can post back directly. Without this clause a facility that was
+  // approved, shared its link and was then REJECTED kept issuing public
+  // tokens through the action while its page correctly 404'd.
+  //
+  // findFirst with the shared bookableSessionWhere() rather than a
+  // findUnique on the id alone, so the listing rules stay defined once in
+  // lib/publicListing.ts.
+  const session = await prisma.session.findFirst({ where: bookableSessionWhere(parsed.data.sessionId) });
   if (!session) {
-    return { error: "Session not found." };
+    // Deliberately one message for "no such session" and "session at a
+    // facility that isn't listed": telling them apart would confirm that
+    // an unapproved or rejected facility exists.
+    return { error: "This session isn't available for booking." };
   }
-  if (session.status !== "OPEN" && session.status !== "IN_PROGRESS") {
+  // Status is checked after the listing gate, so this friendlier wording
+  // is only ever reached for a session the public is allowed to see.
+  if (!isBookableSessionStatus(session.status)) {
     return { error: "This session is not currently accepting bookings." };
   }
 
