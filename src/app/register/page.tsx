@@ -4,7 +4,7 @@ import { Footer } from "@/components/ui/Footer";
 import { Card } from "@/components/ui/Card";
 
 export const metadata = {
-  title: "Create an account — ApnaHealth",
+  title: "Create an account",
 };
 
 interface SignupOption {

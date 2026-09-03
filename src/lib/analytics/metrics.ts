@@ -101,3 +101,79 @@ export function predictionAccuracy(evals: PredictionEvalInput[]): PredictionAccu
   const hits = evals.filter((e) => e.actualStartAt >= e.windowStartAt && e.actualStartAt <= e.windowEndAt).length;
   return { medianAbsErrorSeconds: median(errors), windowHitRate: hits / evals.length, sampleSize: evals.length };
 }
+
+// --- Per-visit-type and per-model breakdowns ---
+//
+// Both exist for the same reason: baseline-v1 claims that separating
+// visit types improves prediction, and a claim like that has to be
+// checkable against the clinic's own data rather than taken on trust.
+// If v1 is worse here, this is where it shows.
+
+export interface TypedTokenMetricInput extends TokenMetricInput {
+  visitType: string;
+}
+
+export interface VisitTypeDuration {
+  visitType: string;
+  medianSeconds: number | null;
+  sampleSize: number;
+}
+
+/**
+ * Median consultation duration per visit type, longest first.
+ *
+ * This is the evidence for whether splitting types was worth doing at
+ * all: if a clinic's follow-ups and first visits take the same time,
+ * baseline-v1 has nothing to offer them and the honest answer is to say
+ * so rather than to claim an improvement.
+ */
+export function consultDurationByVisitType(tokens: TypedTokenMetricInput[]): VisitTypeDuration[] {
+  const byType = new Map<string, TypedTokenMetricInput[]>();
+  for (const token of tokens) {
+    const bucket = byType.get(token.visitType);
+    if (bucket) bucket.push(token);
+    else byType.set(token.visitType, [token]);
+  }
+
+  return [...byType.entries()]
+    .map(([visitType, group]) => {
+      const stats = consultDurationStats(group);
+      return { visitType, medianSeconds: stats.medianSeconds, sampleSize: stats.sampleSize };
+    })
+    .filter((row) => row.sampleSize > 0)
+    .sort((a, b) => (b.medianSeconds ?? 0) - (a.medianSeconds ?? 0));
+}
+
+export interface ModelAccuracy extends PredictionAccuracy {
+  modelVersion: string;
+}
+
+export interface VersionedPredictionEvalInput extends PredictionEvalInput {
+  modelVersion: string;
+}
+
+/**
+ * Prediction accuracy split by the model that produced each prediction.
+ *
+ * Snapshots carry the modelVersion that made them, so historical v0 rows
+ * and new v1 rows can be compared on the same clinic's real queue. Sorted
+ * by version so the ordering is stable rather than dependent on which
+ * arrived first.
+ *
+ * Two caveats a reader has to hold: these are different time periods, not
+ * a controlled experiment, and a version with a small sample size can
+ * look better or worse than it is. Sample size is returned alongside for
+ * exactly that reason — never report the rate without it.
+ */
+export function predictionAccuracyByModel(evals: VersionedPredictionEvalInput[]): ModelAccuracy[] {
+  const byVersion = new Map<string, VersionedPredictionEvalInput[]>();
+  for (const item of evals) {
+    const bucket = byVersion.get(item.modelVersion);
+    if (bucket) bucket.push(item);
+    else byVersion.set(item.modelVersion, [item]);
+  }
+
+  return [...byVersion.entries()]
+    .map(([modelVersion, group]) => ({ modelVersion, ...predictionAccuracy(group) }))
+    .sort((a, b) => a.modelVersion.localeCompare(b.modelVersion));
+}

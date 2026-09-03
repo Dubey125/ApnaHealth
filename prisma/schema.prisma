@@ -58,6 +58,30 @@ enum TokenSource {
   SELF_BOOK
 }
 
+// What kind of visit this token is for. The prediction engine keeps a
+// separate service-time distribution per type, because a follow-up and a
+// first consultation are not the same length of appointment and treating
+// them as one median is the largest avoidable source of prediction error.
+//
+// UNSPECIFIED is the default and is what every token issued before this
+// existed still carries. It is deliberately NOT backfilled to NEW: a row
+// whose type nobody recorded is unknown, and guessing would quietly
+// poison the NEW distribution with follow-ups. UNSPECIFIED tokens use the
+// overall median and contribute to it, but form no distribution of their
+// own.
+//
+// A fixed enum rather than a per-clinic table, for now. The prediction
+// gain comes from telling consultation lengths apart, not from letting
+// each clinic name them; the service-time lookup is keyed by the type
+// value, so this can become a clinic-defined table later without changing
+// the prediction interface.
+enum VisitType {
+  UNSPECIFIED
+  NEW
+  FOLLOW_UP
+  PROCEDURE
+}
+
 enum TokenStatus {
   BOOKED
   CHECKED_IN
@@ -101,6 +125,12 @@ enum FacilityType {
 model Clinic {
   id                String         @id @default(cuid())
   name              String
+  // Public, human-readable identifier for /facilities/[slug]. Added when
+  // clinics and hospitals became discoverable in their own right rather
+  // than only as the address under a doctor's name — the same reason
+  // Doctor.slug exists: "internal IDs never go into public URLs".
+  // Includes the city, because facility names repeat across cities.
+  slug              String         @unique
   facilityType      FacilityType   @default(CLINIC)
   addressLine       String
   // Locality / neighbourhood ("Koregaon Park"), the unit people actually
@@ -110,6 +140,15 @@ model Clinic {
   city              String
   state             String
   postalCode        String?
+  // Where the facility physically is, for "near you" discovery. Nullable
+  // because a facility is legitimately listed before anyone records its
+  // position: nearest-first search skips un-geocoded facilities rather
+  // than guessing a point for them, and every other search still finds
+  // them. Kept on Clinic and not duplicated onto Doctor — a Doctor row is
+  // already per-facility (clinicId is required), so a doctor's location IS
+  // their facility's, and a second copy could only ever drift from it.
+  latitude          Float?
+  longitude         Float?
   phone             String
   timezone          String         @default("Asia/Kolkata")
   isActive          Boolean        @default(true)
@@ -135,6 +174,14 @@ model Clinic {
   recordConsents      RecordConsent[]
   recordAccessEvents  RecordAccessEvent[]
   auditEvents         AuditEvent[]
+
+  // Radius search is a bounding-box BETWEEN on both columns before the
+  // exact haversine filter runs in application code (src/lib/geo), so the
+  // two are indexed together. A btree can only range-scan on the leading
+  // column, so latitude does the narrowing and longitude is along for the
+  // ride as a covering column — which is the right shape here, because the
+  // second stage rejects the corner-of-the-box rows anyway.
+  @@index([latitude, longitude])
 }
 
 model StaffUser {
@@ -316,8 +363,25 @@ model Token {
   patientAgeSnapshot   Int?
   patientSexSnapshot   String?
   reasonForVisit       String?
+  visitType            VisitType   @default(UNSPECIFIED)
   source               TokenSource
   status               TokenStatus @default(BOOKED)
+  // Service order, decoupled from tokenNumber. 0 is normal FIFO; a higher
+  // value is served earlier (see src/lib/queue/ordering.ts, which owns the
+  // single definition of queue order).
+  //
+  // Reordering deliberately does NOT renumber tokens. The token number is
+  // the patient's identity — it is on their ticket, on the waiting-room
+  // screen and in what the front desk calls out — so changing it to
+  // express "seen earlier" would rename a patient mid-visit and, with
+  // @@unique([sessionId, tokenNumber]), could not be done as a swap
+  // anyway.
+  //
+  // Not indexed on purpose. A session's live queue is tens of rows and is
+  // already narrowed by @@index([sessionId, status]); sorting that in
+  // Postgres is free, whereas a fourth index on the most-written table in
+  // the product is not.
+  queuePriority        Int         @default(0)
   issuedAt             DateTime    @default(now()) @db.Timestamptz(3)
   checkedInAt          DateTime?   @db.Timestamptz(3)
   consultStartedAt     DateTime?   @db.Timestamptz(3)

@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { createStaffSession } from "@/lib/auth/staff";
 import { slugify } from "@/lib/slugify";
+import { parseCoordinatePairFields } from "@/lib/geo/formCoordinates";
+import { uniqueClinicSlug } from "@/lib/clinicSlug";
 
 export interface RegisterState {
   error?: string;
@@ -29,6 +31,15 @@ const facilitySchema = z.object({
 // self-signup and the owner's "add doctor" form need the same collision
 // handling — Doctor.slug is unique across every clinic, so two same-named
 // doctors at different facilities must still resolve to distinct URLs.
+// Same collision handling for the facility's own public slug, which both
+// signup flows need: /register/clinic creates a facility, and
+// /register/doctor creates the practice that IS the facility.
+async function clinicSlugFor(name: string, city: string): Promise<string> {
+  return uniqueClinicSlug(name, city, async (slug) => {
+    return (await prisma.clinic.findUnique({ where: { slug }, select: { id: true } })) !== null;
+  });
+}
+
 async function uniqueDoctorSlug(name: string): Promise<string> {
   const base = slugify(name) || "doctor";
   let slug = base;
@@ -69,6 +80,14 @@ export async function registerFacility(_prevState: RegisterState, formData: Form
     return { error: "Check the form: facility name, address, city, state, phone, your name, a valid email and an 8+ character password are all required." };
   }
 
+  // Optional at signup, and never a blocker: a facility with no map
+  // location is listed and searchable everywhere except radius search,
+  // and the owner can add it later from the clinic profile.
+  const coordinates = parseCoordinatePairFields(formData.get("latitude"), formData.get("longitude"));
+  if (!coordinates.ok) {
+    return { error: coordinates.error };
+  }
+
   // StaffUser.email is globally unique, so this is checked before the
   // transaction to return a friendly message rather than a constraint error.
   const existing = await prisma.staffUser.findUnique({ where: { email: parsed.data.email } });
@@ -77,16 +96,20 @@ export async function registerFacility(_prevState: RegisterState, formData: Form
   }
 
   const passwordHash = await hashPassword(parsed.data.password);
+  const clinicSlug = await clinicSlugFor(parsed.data.facilityName, parsed.data.city);
   const created = await prisma.$transaction(async (tx) => {
     const clinic = await tx.clinic.create({
       data: {
         name: parsed.data.facilityName,
+        slug: clinicSlug,
         facilityType: parsed.data.facilityType,
         addressLine: parsed.data.addressLine,
         areaLabel: parsed.data.areaLabel ?? null,
         city: parsed.data.city,
         state: parsed.data.state,
         postalCode: parsed.data.postalCode ?? null,
+        latitude: coordinates.coordinates?.latitude ?? null,
+        longitude: coordinates.coordinates?.longitude ?? null,
         phone: parsed.data.phone,
       },
     });
@@ -107,7 +130,11 @@ export async function registerFacility(_prevState: RegisterState, formData: Form
         entityType: "Clinic",
         entityId: clinic.id,
         occurredAt: new Date(),
-        metadata: { facilityType: parsed.data.facilityType, city: parsed.data.city },
+        metadata: {
+          facilityType: parsed.data.facilityType,
+          city: parsed.data.city,
+          hasCoordinates: coordinates.coordinates !== null,
+        },
       },
     });
     return { clinic, staff };
@@ -180,24 +207,35 @@ export async function registerDoctor(_prevState: RegisterState, formData: FormDa
     return { error: "Check the form: your name, specialty, qualification, practice name, address, city, state, phone, a valid email and an 8+ character password are all required." };
   }
 
+  // Same optional map location as facility signup — the practice is the
+  // Clinic row, so it is geocoded the same way.
+  const coordinates = parseCoordinatePairFields(formData.get("latitude"), formData.get("longitude"));
+  if (!coordinates.ok) {
+    return { error: coordinates.error };
+  }
+
   const existing = await prisma.staffUser.findUnique({ where: { email: parsed.data.email } });
   if (existing) {
     return { error: "An account with this email already exists. Sign in instead." };
   }
 
   const slug = await uniqueDoctorSlug(parsed.data.doctorName);
+  const clinicSlug = await clinicSlugFor(parsed.data.practiceName, parsed.data.city);
   const passwordHash = await hashPassword(parsed.data.password);
 
   const created = await prisma.$transaction(async (tx) => {
     const clinic = await tx.clinic.create({
       data: {
         name: parsed.data.practiceName,
+        slug: clinicSlug,
         facilityType: "CLINIC",
         addressLine: parsed.data.addressLine,
         areaLabel: parsed.data.areaLabel ?? null,
         city: parsed.data.city,
         state: parsed.data.state,
         postalCode: parsed.data.postalCode ?? null,
+        latitude: coordinates.coordinates?.latitude ?? null,
+        longitude: coordinates.coordinates?.longitude ?? null,
         phone: parsed.data.phone,
       },
     });
@@ -232,7 +270,11 @@ export async function registerDoctor(_prevState: RegisterState, formData: FormDa
         entityType: "Doctor",
         entityId: doctor.id,
         occurredAt: new Date(),
-        metadata: { specialty: parsed.data.specialty, city: parsed.data.city },
+        metadata: {
+          specialty: parsed.data.specialty,
+          city: parsed.data.city,
+          hasCoordinates: coordinates.coordinates !== null,
+        },
       },
     });
     return { clinic, staff, doctor };

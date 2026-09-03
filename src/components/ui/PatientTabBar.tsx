@@ -24,7 +24,9 @@ interface Tab {
 // Hidden on lg+ where the header nav is always visible anyway, and never
 // rendered at all for signed-out visitors (nothing here is public).
 const TABS: Tab[] = [
-  { href: "/doctors", label: "Find", icon: IconStethoscope, alsoMatches: ["/book"] },
+  // Discovery is three routes now (doctors, clinics, hospitals) plus the
+  // facility profile they lead to, so the Find tab claims all of them.
+  { href: "/doctors", label: "Find", icon: IconStethoscope, alsoMatches: ["/book", "/clinics", "/hospitals", "/facilities"] },
   { href: "/patient/appointments", label: "Appointments", icon: IconCalendar },
   { href: "/patient/queue", label: "Queue", icon: IconQueue, alsoMatches: ["/t"] },
   { href: "/patient/records", label: "Records", icon: IconShield },

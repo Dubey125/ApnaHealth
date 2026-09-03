@@ -5,6 +5,7 @@ import { issueWalkInToken, type QueueActionState } from "./actions";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { FormError } from "@/components/ui/FormError";
 import { Button } from "@/components/ui/Button";
+import { STAFF_VISIT_TYPES, visitTypeLabel } from "@/lib/queue/visitTypes";
 
 const initialState: QueueActionState = {};
 
@@ -46,6 +47,22 @@ export function WalkInForm({ sessionId }: { sessionId: string }) {
           </Select>
         </Label>
       </div>
+
+      {/* Feeds the prediction engine a per-type service time (baseline-v1).
+          Optional like everything else here: left blank, the visit uses
+          the overall median, which is what every prediction did before
+          types existed. */}
+      <Label htmlFor="walkin-visit-type">
+        Visit type
+        <Select id="walkin-visit-type" name="visitType" defaultValue="">
+          <option value="">Not recorded</option>
+          {STAFF_VISIT_TYPES.map((visitType) => (
+            <option key={visitType} value={visitType}>
+              {visitTypeLabel(visitType)}
+            </option>
+          ))}
+        </Select>
+      </Label>
 
       <Label htmlFor="walkin-reason">
         Reason for visit

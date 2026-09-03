@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --import tsx --test src/**/*.test.ts",
+    "test:e2e": "node --import tsx --test tests/e2e/*.e2e.ts",
     "admin:create": "tsx scripts/create-admin.ts",
+    "clinic:location": "tsx scripts/set-clinic-coordinates.ts",
+    "restore:verify": "tsx scripts/verify-restore.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

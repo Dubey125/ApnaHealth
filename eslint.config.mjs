@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    // Plain-CommonJS operator scripts. These are run directly by node
+    // (never bundled, never imported by the app), so require() is the
+    // correct call there and the TypeScript-oriented rule that forbids it
+    // does not apply.
+    files: ["scripts/**/*.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;

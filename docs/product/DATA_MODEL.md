@@ -1,11 +1,20 @@
 # Data Model Contract
 
 ## Clinic
-id, name, facilityType CLINIC|HOSPITAL, addressLine, areaLabel?, city, state, postalCode?, phone, timezone, isActive, createdAt, updatedAt
+id, name, slug, facilityType CLINIC|HOSPITAL, addressLine, areaLabel?, city, state, postalCode?, latitude?, longitude?, phone, timezone, isActive, createdAt, updatedAt
 
-`facilityType` and `areaLabel` are additions to the original contract, both
-on Clinic rather than on new tables:
+`slug`, `facilityType`, `areaLabel` and the coordinate pair are additions to
+the original contract, all on Clinic rather than on new tables:
 
+- `slug` — the public identifier for /facilities/[slug], added when clinics
+  and hospitals became discoverable in their own right rather than only as
+  the address printed under a doctor's name. Same rule as Doctor.slug:
+  internal IDs never go into public URLs. Built from `<name> <city>`,
+  because facility names repeat across cities; collisions past that get a
+  numeric suffix. Backfilled in SQL by the migration using the same
+  slugification `src/lib/slugify.ts` performs, so rows created before and
+  after it have consistent URLs. Stable once assigned — renaming a facility
+  does not move its public page.
 - `facilityType` — a hospital is the same facility record as a clinic at a
   different scale, sharing every relation (doctors, sessions, staff, queue,
   records). A parallel Hospital table would have duplicated all seven of
@@ -15,10 +24,44 @@ on Clinic rather than on new tables:
   in Indian cities. `city` alone is too coarse in a metro, and matching on
   the free-text `addressLine` is too specific. Nullable because it is
   genuinely unrecorded for existing rows.
+- `latitude?` / `longitude?` — the facility's position, added when radius
+  search ("search near you") was built on top of it, and not before. Both
+  nullable with no default and no backfill: there is no honest coordinate
+  for a facility nobody has geocoded, and 0/0 is a real point in the Gulf
+  of Guinea that would rank first for anyone searching from West Africa.
+  A facility without them stays fully listed and searchable by name,
+  specialty, city and area — it is only absent from radius results.
+  Indexed as `(latitude, longitude)` for the bounding-box pre-filter.
 
-Geographic coordinates were deliberately NOT added: a latitude/longitude
-pair is only useful with radius search built on top of it, and adding
-columns nothing reads yet would be speculative schema.
+Discovery reads Clinic three ways from one row: as the facility behind a
+doctor (/doctors), as a clinic (/clinics) and as a hospital (/hospitals).
+The split is in the routes, not the schema — `facilityType` is the only
+thing that differs, and a facility re-typed from clinic to hospital keeps
+its data, its slug and its public page.
+
+Coordinates are on Clinic and are deliberately NOT duplicated onto Doctor.
+A Doctor row is already per-facility (`clinicId` is required), so a
+doctor's location *is* their facility's; a doctor practising at two
+facilities is two Doctor rows, each with its own clinic and therefore its
+own position. A second copy on Doctor could only ever drift from the
+address it claims to describe.
+
+## Patient location
+
+Not a model. A patient's position is never written to any table: it
+arrives as a query parameter, is used to sort one page render, and is
+discarded. It is rounded to ~100 m in the browser before it is sent (see
+`src/lib/geo/searchParams.ts`), is excluded from logs, and the JSON
+endpoint that consumes it is served `Cache-Control: private, no-store`.
+Patients who prefer not to share it search by locality, city or PIN code
+instead, resolved against the coordinates of already-listed facilities
+rather than an external geocoder.
+
+On pages that show one known facility rather than a search — a doctor's
+profile, a patient's own appointments — the distance is computed in the
+browser against the facility's public coordinates, so nothing about the
+patient's position reaches the server at all
+(`src/components/discovery/ViewerLocation.tsx`).
 
 ## StaffUser
 id, clinicId, name, email unique, passwordHash, role OWNER|FRONT_DESK|DOCTOR, doctorId?, isActive, createdAt, updatedAt
@@ -44,7 +87,18 @@ id, sessionId, startAt, endAt, reason, createdAt, updatedAt
 A planned, known-in-advance block of time (e.g. a fixed lunch break) during which the doctor is not consulting. Distinct from Session.status = PAUSED: PAUSED is an unplanned, open-ended interruption (existing pause/resume mechanism, no known end time); a SessionBreak has a known startAt/endAt the prediction engine schedules around in advance. The prediction engine must never predict a consultation start inside a scheduled break, and must recalculate (push later) predictions that would otherwise fall during one.
 
 ## Token
-id, sessionId, publicId, tokenNumber, patientId?, patientNameSnapshot, patientPhoneSnapshot, source WALK_IN|SELF_BOOK, status BOOKED|CHECKED_IN|IN_CONSULT|COMPLETED|NO_SHOW|CANCELLED, issuedAt, checkedInAt?, consultStartedAt?, consultEndedAt?, createdAt, updatedAt
+id, sessionId, publicId, tokenNumber, patientId?, patientNameSnapshot, patientPhoneSnapshot, source WALK_IN|SELF_BOOK, visitType UNSPECIFIED|NEW|FOLLOW_UP|PROCEDURE, status BOOKED|CHECKED_IN|IN_CONSULT|COMPLETED|NO_SHOW|CANCELLED, queuePriority, issuedAt, checkedInAt?, consultStartedAt?, consultEndedAt?, createdAt, updatedAt
+
+`queuePriority` (default 0) carries service order so that reordering the
+queue never has to renumber a token — the number is the patient's identity.
+Order is `queuePriority DESC, tokenNumber ASC`; see QUEUE_RULES.md
+"Reordering" and `src/lib/queue/ordering.ts`, which owns the single
+definition.
+
+`visitType` (default UNSPECIFIED) gives the prediction engine a separate
+service-time distribution per kind of visit — see QUEUE_RULES.md
+"baseline-v1". Existing rows were NOT backfilled: a visit nobody typed is
+unknown, and guessing would mix follow-ups into the NEW distribution.
 
 ## Patient
 id, name, phone, email?, passwordHash, dateOfBirth?, sex?, createdAt, updatedAt

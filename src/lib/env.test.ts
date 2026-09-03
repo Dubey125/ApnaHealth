@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateSessionSecret, validateDatabaseUrl } from "./env";
+import { validateSessionSecret, validateDatabaseUrl,
+  productionConfigWarnings,
+} from "./env";
 
 test("validateSessionSecret accepts a 32+ character secret", () => {
   const secret = "a".repeat(32);
@@ -26,4 +28,29 @@ test("validateDatabaseUrl rejects an empty string", () => {
 
 test("validateDatabaseUrl rejects undefined", () => {
   assert.throws(() => validateDatabaseUrl(undefined), /DATABASE_URL/);
+});
+
+test("productionConfigWarnings stays quiet outside production", () => {
+  assert.deepEqual(productionConfigWarnings({ NODE_ENV: "development" } as NodeJS.ProcessEnv), []);
+});
+
+test("productionConfigWarnings flags a missing or localhost SITE_URL", () => {
+  const missing = productionConfigWarnings({ NODE_ENV: "production" } as NodeJS.ProcessEnv);
+  assert.ok(missing.some((w) => w.includes("SITE_URL is not set")));
+
+  const localhost = productionConfigWarnings({
+    NODE_ENV: "production",
+    SITE_URL: "http://localhost:3000",
+  } as NodeJS.ProcessEnv);
+  assert.ok(localhost.some((w) => w.includes("should be an https origin")));
+});
+
+test("a correctly configured production environment produces no warnings", () => {
+  const warnings = productionConfigWarnings({
+    NODE_ENV: "production",
+    SITE_URL: "https://apnahealth.in",
+    RESEND_API_KEY: "re_live_key",
+    MAP_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png",
+  } as NodeJS.ProcessEnv);
+  assert.deepEqual(warnings, []);
 });

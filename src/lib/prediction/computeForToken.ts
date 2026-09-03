@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
-import { predictBaselineV0, type BreakInterval, type PredictionOutput } from "./baseline";
+import { predictBaselineV1, type BreakInterval, type PredictionOutput } from "./baseline";
+import { QUEUE_ORDER_BY, servedBeforeWhere } from "@/lib/queue/ordering";
+import type { VisitType } from "@/generated/prisma/enums";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -20,7 +22,7 @@ export interface TokenPrediction extends PredictionOutput {
   relevantBreak: BreakInterval | null;
 }
 
-// Computes a fresh baseline-v0 prediction for a waiting (BOOKED or
+// Computes a fresh baseline-v1 prediction for a waiting (BOOKED or
 // CHECKED_IN) token and records it as a PredictionSnapshot, per
 // QUEUE_RULES.md ("write a PredictionSnapshot row each time a prediction
 // is shown to a patient"). Returns null for a token that isn't currently
@@ -38,11 +40,21 @@ export async function computeAndSnapshotPrediction(tokenId: string): Promise<Tok
   const now = new Date();
   const { session } = token;
 
-  const [tokensAheadCount, currentInConsult, sessionRecentCompleted, doctorRecentCompleted, breaks] = await Promise.all([
-    prisma.token.count({
-      where: { sessionId: session.id, status: "CHECKED_IN", tokenNumber: { lt: token.tokenNumber } },
+  const [tokensAhead, currentInConsult, sessionRecentCompleted, doctorRecentCompleted, breaks] = await Promise.all([
+    // v1 needs to know WHAT each person ahead is here for, not merely how
+    // many there are, so this reads their visit types instead of counting.
+    // Effective queue order — see src/lib/queue/ordering.ts. Counting by
+    // token number alone would let a prioritised patient with a high
+    // number be treated as already past by everyone behind them.
+    prisma.token.findMany({
+      where: { sessionId: session.id, status: "CHECKED_IN", ...servedBeforeWhere(token) },
+      orderBy: QUEUE_ORDER_BY,
+      select: { visitType: true },
     }),
-    prisma.token.findFirst({ where: { sessionId: session.id, status: "IN_CONSULT" } }),
+    prisma.token.findFirst({
+      where: { sessionId: session.id, status: "IN_CONSULT" },
+      select: { consultStartedAt: true, visitType: true },
+    }),
     prisma.token.findMany({
       where: { sessionId: session.id, status: "COMPLETED", consultStartedAt: { not: null }, consultEndedAt: { not: null } },
       orderBy: { consultEndedAt: "desc" },
@@ -60,12 +72,23 @@ export async function computeAndSnapshotPrediction(tokenId: string): Promise<Tok
     prisma.sessionBreak.findMany({ where: { sessionId: session.id, endAt: { gt: now } } }),
   ]);
 
-  const output = predictBaselineV0({
+  // The doctor's own history, grouped by what kind of visit it was. Only
+  // this doctor's: consultation length is a property of the clinician and
+  // their practice, not of the visit type in the abstract.
+  const durationsSecondsByType: Record<string, number[]> = {};
+  for (const completed of doctorRecentCompleted) {
+    const seconds = durationSeconds(completed.consultStartedAt!, completed.consultEndedAt!);
+    (durationsSecondsByType[completed.visitType] ??= []).push(seconds);
+  }
+
+  const output = predictBaselineV1({
     now,
-    tokensAhead: tokensAheadCount,
+    aheadVisitTypes: tokensAhead.map((t) => t.visitType as VisitType),
+    currentVisitType: currentInConsult?.visitType ?? null,
     currentConsultStartedAt: currentInConsult?.consultStartedAt ?? null,
     sessionRecentDurationsSeconds: sessionRecentCompleted.map((t) => durationSeconds(t.consultStartedAt!, t.consultEndedAt!)),
     doctorRecentDurationsSeconds: doctorRecentCompleted.map((t) => durationSeconds(t.consultStartedAt!, t.consultEndedAt!)),
+    durationsSecondsByType,
     doctorDefaultMinutes: session.doctor.defaultConsultMinutes,
     breaks: breaks.map((b) => ({ startAt: b.startAt, endAt: b.endAt })),
   });
@@ -78,7 +101,7 @@ export async function computeAndSnapshotPrediction(tokenId: string): Promise<Tok
       predictedStartAt: output.predictedStartAt,
       windowStartAt: output.windowStartAt,
       windowEndAt: output.windowEndAt,
-      tokensAhead: tokensAheadCount,
+      tokensAhead: tokensAhead.length,
       medianServiceSeconds: Math.round(output.medianServiceSeconds),
     },
   });
@@ -89,5 +112,5 @@ export async function computeAndSnapshotPrediction(tokenId: string): Promise<Tok
       .filter((b) => b.startAt.getTime() <= output.windowEndAt.getTime())
       .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())[0] ?? null;
 
-  return { ...output, tokensAhead: tokensAheadCount, relevantBreak };
+  return { ...output, tokensAhead: tokensAhead.length, relevantBreak };
 }

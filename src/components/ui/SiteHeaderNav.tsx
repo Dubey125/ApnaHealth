@@ -26,11 +26,12 @@ const SECTION_LINKS: NavLink[] = [
 ];
 
 // The signed-in patient's own product nav (Appointment model design note):
-// Find Doctors is discovery, Appointments is the patient-facing view of
+// Find Care is discovery — doctors, clinics and hospitals, which share one
+// tabbed surface — Appointments is the patient-facing view of
 // self-booked Tokens, Live Queue is whichever appointment is currently
 // active (or a "nothing active" landing), Health Records is unchanged.
 const PATIENT_LINKS: NavLink[] = [
-  { href: "/doctors", label: "Find Doctors" },
+  { href: "/doctors", label: "Find Care" },
   { href: "/patient/appointments", label: "Appointments" },
   { href: "/patient/queue", label: "Live Queue" },
   { href: "/patient/records", label: "Health Records" },

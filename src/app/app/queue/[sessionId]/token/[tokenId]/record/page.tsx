@@ -2,8 +2,11 @@ import { prisma } from "@/lib/db";
 import { loadTokenForDoctorRecord } from "@/lib/records/loadTokenForDoctorRecord";
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
 import { ConsultationForm } from "./ConsultationForm";
+import { PrintPrescriptionButton } from "./PrintPrescriptionButton";
+import { PrescriptionPrintView } from "@/components/records/PrescriptionPrintView";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import { VisitTypeCorrection } from "./VisitTypeCorrection";
 import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -14,10 +17,6 @@ interface RecordPageProps {
   params: Promise<{ sessionId: string; tokenId: string }>;
 }
 
-// dateOfBirth is stored as a date-only column, so the comparison is done
-// entirely in UTC parts — using local getters would shift the birthday by
-// a day for anyone east or west of UTC and occasionally report the wrong
-// age on the boundary.
 function ageInYears(dob: Date, now: Date): number {
   let age = now.getUTCFullYear() - dob.getUTCFullYear();
   const monthDelta = now.getUTCMonth() - dob.getUTCMonth();
@@ -29,9 +28,11 @@ function ageInYears(dob: Date, now: Date): number {
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted">{label}</span>
-      <span className="whitespace-pre-wrap text-sm text-foreground">{value}</span>
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-bold uppercase tracking-wider text-muted">{label}</span>
+      <span className="whitespace-pre-wrap text-sm text-foreground bg-background p-3 rounded-lg border border-border">
+        {value}
+      </span>
     </div>
   );
 }
@@ -39,6 +40,11 @@ function Field({ label, value }: { label: string; value: string }) {
 export default async function ConsultationRecordPage({ params }: RecordPageProps) {
   const { sessionId, tokenId } = await params;
   const { session, clinicSession, token } = await loadTokenForDoctorRecord(sessionId, tokenId);
+
+  const doctor = await prisma.doctor.findUniqueOrThrow({
+    where: { id: session.doctorId },
+    include: { clinic: true },
+  });
 
   if (!token.patientId) {
     return (
@@ -48,10 +54,7 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
           backHref={`/app/queue/${clinicSession.id}`}
           backLabel="Back to queue"
         />
-        {/* Everything the counter captured for this walk-in. Without an
-            account there is no stored history to show, but the doctor
-            should still see who is in front of them and why. */}
-        <Card className="flex flex-col gap-2">
+        <Card className="flex flex-col gap-2 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold text-foreground">{token.patientNameSnapshot}</h2>
             <Badge variant="neutral">Token #{token.tokenNumber}</Badge>
@@ -73,8 +76,8 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
           )}
         </Card>
         <Alert variant="info">
-          This visit has no linked patient account, so a clinical record cannot be attached to it. The patient can
-          link future visits by registering or signing in with the same phone number before booking or checking in.
+          This visit has no linked patient account, so an electronic health record cannot be persisted across visits.
+          The patient can register or sign in with their phone number for future consultations.
         </Alert>
       </main>
     );
@@ -84,9 +87,6 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
 
   const [existingRecord, history] = await Promise.all([
     prisma.consultationRecord.findFirst({ where: { tokenId: token.id } }),
-    // Scoped to this doctor's OWN prior records with this patient — a
-    // doctor does not see another clinician's notes (PRIVACY_BOUNDARY.md,
-    // and the visit-scoped consent model in actions.ts).
     prisma.consultationRecord.findMany({
       where: { patientId: patient.id, doctorId: session.doctorId, NOT: { tokenId: token.id } },
       orderBy: { consultedAt: "desc" },
@@ -109,114 +109,196 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
 
   const lastVisit = history[0] ?? null;
   const visitNumber = history.length + 1;
+  const patientAge = patient.dateOfBirth
+    ? ageInYears(patient.dateOfBirth, now)
+    : token.patientAgeSnapshot;
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
-      <PageHeader title="Consultation record" backHref={`/app/queue/${clinicSession.id}`} backLabel="Back to queue" />
-
-      {/* Clinical context first: who is in front of the doctor, and how
-          this visit sits relative to their previous ones. */}
-      <Card className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-start gap-4">
-          <Avatar name={patient.name} size={56} className="shrink-0" />
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-foreground">{patient.name}</h2>
-              <Badge variant="neutral">Token #{token.tokenNumber}</Badge>
-            </div>
-            <p className="text-sm text-muted">
-              {[
-                patient.dateOfBirth ? `${ageInYears(patient.dateOfBirth, now)} yrs` : token.patientAgeSnapshot != null ? `${token.patientAgeSnapshot} yrs` : null,
-                patient.sex ?? token.patientSexSnapshot,
-                patient.phone,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-            {token.reasonForVisit && (
-              <p className="text-sm text-foreground">
-                <span className="font-medium">Reason for visit:</span> {token.reasonForVisit}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-x-8 gap-y-2 border-t border-border pt-3 text-sm">
-          <span className="text-muted">
-            Visit <span className="font-medium tabular-nums text-foreground">#{visitNumber}</span> with you
-          </span>
-          <span className="text-muted">
-            Last seen{" "}
-            <span className="font-medium text-foreground">
-              {lastVisit ? formatClinicDate(lastVisit.consultedAt) : "first visit"}
-            </span>
-          </span>
-          {token.consultStartedAt && (
-            <span className="text-muted">
-              In consult since <span className="font-medium text-foreground">{formatClinicTime(token.consultStartedAt)}</span>
-            </span>
-          )}
-        </div>
-      </Card>
-
-      {existingRecord ? (
-        <Card className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">This visit</h2>
-            <span className="text-xs text-muted">
-              Recorded {formatClinicDate(existingRecord.consultedAt)} {formatClinicTime(existingRecord.consultedAt)}
-            </span>
-          </div>
-          {existingRecord.chiefComplaint && <Field label="Chief complaint" value={existingRecord.chiefComplaint} />}
-          {existingRecord.clinicalAssessment && <Field label="Assessment" value={existingRecord.clinicalAssessment} />}
-          {existingRecord.diagnosisText && <Field label="Diagnosis" value={existingRecord.diagnosisText} />}
-          {existingRecord.prescriptionText && <Field label="Prescription" value={existingRecord.prescriptionText} />}
-          {existingRecord.followUpInstructions && (
-            <Field label="Follow-up" value={existingRecord.followUpInstructions} />
-          )}
-          <p className="border-t border-border pt-3 text-xs text-muted">
-            Records cannot be edited after saving. Add a correction at the patient&apos;s next visit if needed.
-          </p>
-        </Card>
-      ) : (
-        <ConsultationForm sessionId={clinicSession.id} tokenId={token.id} />
+    <>
+      {/* Hidden Printable Prescription */}
+      {existingRecord && (
+        <PrescriptionPrintView
+          data={{
+            doctorName: doctor.name,
+            doctorSpecialty: doctor.specialty,
+            doctorQualification: doctor.qualificationText,
+            doctorRegNumber: doctor.registrationNumber,
+            doctorRegCouncil: doctor.registrationCouncil,
+            clinicName: doctor.clinic.name,
+            clinicAddress: doctor.clinic.addressLine,
+            clinicCity: doctor.clinic.city,
+            clinicPhone: doctor.clinic.phone,
+            patientName: patient.name,
+            patientAge: patientAge,
+            patientSex: patient.sex ?? token.patientSexSnapshot,
+            patientPhone: patient.phone,
+            tokenNumber: token.tokenNumber,
+            consultedAt: existingRecord.consultedAt,
+            chiefComplaint: existingRecord.chiefComplaint,
+            clinicalAssessment: existingRecord.clinicalAssessment,
+            diagnosisText: existingRecord.diagnosisText,
+            prescriptionText: existingRecord.prescriptionText,
+            followUpInstructions: existingRecord.followUpInstructions,
+          }}
+        />
       )}
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          Your previous visits with this patient ({history.length})
-        </h2>
-        {history.length === 0 ? (
-          <EmptyState
-            title="No previous records"
-            description="This is the first consultation you have recorded for this patient."
-          />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {history.map((record) => (
-              <li key={record.id}>
-                <Card className="flex flex-col gap-2 text-sm">
-                  <p className="text-xs font-medium text-muted">
-                    {formatClinicDate(record.consultedAt)} · {formatClinicTime(record.consultedAt)}
-                  </p>
-                  {record.chiefComplaint && <Field label="Complaint" value={record.chiefComplaint} />}
-                  {record.diagnosisText && <Field label="Diagnosis" value={record.diagnosisText} />}
-                  {record.followUpInstructions && <Field label="Follow-up" value={record.followUpInstructions} />}
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <main className="mx-auto flex max-w-4xl flex-1 flex-col gap-6 p-4 sm:p-6 no-print">
+        <PageHeader
+          title="Consultation Workspace"
+          backHref={`/app/queue/${clinicSession.id}`}
+          backLabel="Back to queue"
+          action={existingRecord ? <PrintPrescriptionButton /> : undefined}
+        />
 
-      {/* PRIVACY_BOUNDARY.md: record access is logged. Saying so plainly
-          on the screen where it happens is part of that boundary being
-          real rather than merely implemented. */}
-      <p className="flex items-start gap-2 text-xs text-muted">
-        <IconShield className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        Opening this record was logged against your account. You are seeing only your own previous consultations with
-        this patient, not those of other clinicians.
-      </p>
-    </main>
+        {/* Patient Clinical Context Card */}
+        <Card className="flex flex-col gap-4 p-5">
+          <div className="flex flex-wrap items-start gap-4">
+            <Avatar name={patient.name} size={64} className="shrink-0 ring-2 ring-primary/10" />
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h2 className="text-xl font-bold text-foreground">{patient.name}</h2>
+                <Badge variant="neutral">Token #{token.tokenNumber}</Badge>
+                <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                  Visit #{visitNumber} with you
+                </span>
+              </div>
+              <p className="text-sm text-muted">
+                {[
+                  patientAge != null ? `${patientAge} yrs` : null,
+                  patient.sex ?? token.patientSexSnapshot,
+                  patient.phone,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {token.reasonForVisit && (
+                <div className="text-xs text-foreground bg-surface p-2 rounded border border-border mt-1">
+                  <span className="font-semibold text-primary">Reported Chief Complaint:</span> {token.reasonForVisit}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-x-8 gap-y-2 border-t border-border pt-3 text-xs text-muted">
+            <span>
+              Last Seen:{" "}
+              <span className="font-semibold text-foreground">
+                {lastVisit ? `${formatClinicDate(lastVisit.consultedAt)} (${formatClinicTime(lastVisit.consultedAt)})` : "First consultation"}
+              </span>
+            </span>
+            {token.consultStartedAt && (
+              <span>
+                Consultation Started:{" "}
+                <span className="font-semibold text-foreground">{formatClinicTime(token.consultStartedAt)}</span>
+              </span>
+            )}
+            {/* The doctor is the one who knows what this appointment
+                actually was. Correcting it here does not change what this
+                patient was told — it changes how long the queue thinks
+                this doctor's appointments of this kind take, for every
+                patient after them. */}
+            <VisitTypeCorrection sessionId={clinicSession.id} tokenId={token.id} visitType={token.visitType} />
+          </div>
+        </Card>
+
+        {/* Existing Record or Active Form */}
+        {existingRecord ? (
+          <Card className="flex flex-col gap-5 p-6 border-success/30 bg-success/5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-success text-base">✓</span>
+                <h2 className="text-base font-bold text-foreground">Completed Consultation Record</h2>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted">
+                  Recorded {formatClinicDate(existingRecord.consultedAt)} at {formatClinicTime(existingRecord.consultedAt)}
+                </span>
+                <PrintPrescriptionButton />
+              </div>
+            </div>
+
+            {existingRecord.chiefComplaint && <Field label="Chief Complaints" value={existingRecord.chiefComplaint} />}
+            {existingRecord.clinicalAssessment && (
+              <Field label="Clinical Assessment & Vitals" value={existingRecord.clinicalAssessment} />
+            )}
+            {existingRecord.diagnosisText && <Field label="Diagnosis" value={existingRecord.diagnosisText} />}
+            {existingRecord.prescriptionText && (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base font-serif font-bold text-primary italic">℞</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted">Prescribed Medicines</span>
+                </div>
+                <div className="whitespace-pre-wrap font-mono text-xs bg-background p-3.5 rounded-lg border border-border text-foreground leading-relaxed">
+                  {existingRecord.prescriptionText}
+                </div>
+              </div>
+            )}
+            {existingRecord.followUpInstructions && (
+              <Field label="Advice & Follow-Up" value={existingRecord.followUpInstructions} />
+            )}
+
+            <p className="border-t border-border pt-3 text-xs text-muted">
+              🔒 This record is locked and safely recorded in the patient&apos;s longitudinal care timeline.
+            </p>
+          </Card>
+        ) : (
+          <ConsultationForm sessionId={clinicSession.id} tokenId={token.id} />
+        )}
+
+        {/* Previous Consultation History */}
+        <div className="flex flex-col gap-3">
+          <h2 className="text-base font-bold text-foreground">
+            Previous Consultations with you ({history.length})
+          </h2>
+          {history.length === 0 ? (
+            <EmptyState
+              title="No previous records found"
+              description="This is the first consultation recorded between you and this patient."
+            />
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {history.map((record) => (
+                <li key={record.id}>
+                  <Card className="flex flex-col gap-2 p-4 text-xs">
+                    <div className="flex justify-between items-center text-muted font-medium border-b border-border pb-2">
+                      <span className="font-bold text-foreground">
+                        {formatClinicDate(record.consultedAt)} · {formatClinicTime(record.consultedAt)}
+                      </span>
+                      {record.diagnosisText && (
+                        <span className="text-primary font-semibold">{record.diagnosisText}</span>
+                      )}
+                    </div>
+                    {record.chiefComplaint && (
+                      <p className="text-foreground">
+                        <span className="font-semibold text-muted">Complaint:</span> {record.chiefComplaint}
+                      </p>
+                    )}
+                    {record.prescriptionText && (
+                      <p className="text-foreground font-mono text-[11px] bg-surface p-2 rounded border border-border">
+                        <span className="font-semibold font-sans text-muted">Rx: </span>
+                        {record.prescriptionText}
+                      </p>
+                    )}
+                    {record.followUpInstructions && (
+                      <p className="text-muted">
+                        <span className="font-semibold">Advice:</span> {record.followUpInstructions}
+                      </p>
+                    )}
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Privacy Notice */}
+        <p className="flex items-start gap-2 text-xs text-muted">
+          <IconShield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          Access to this patient record is strictly audited. You are authorized to view and record consultations
+          specifically for patients consulting in your active session.
+        </p>
+      </main>
+    </>
   );
 }

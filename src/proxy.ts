@@ -1,9 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySession } from "@/lib/auth/session";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { buildContentSecurityPolicy, generateNonce } from "@/lib/security/csp";
 
 const STAFF_COOKIE = "staff_session";
 const ADMIN_COOKIE = "admin_session";
+const PATIENT_COOKIE = "patient_session";
+
+// /patient routes reachable without a session. Everything else under
+// /patient is one person's own appointments, queue position and records.
+const PUBLIC_PATIENT_PATHS = new Set(["/patient/login", "/patient/register"]);
 
 // Deliberately not importing StaffRole/StaffSession from lib/auth/staff —
 // this file stays decoupled from that module (see the comment on the
@@ -87,8 +93,28 @@ function clientKey(request: NextRequest): string {
   return forwarded?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
 }
 
+/**
+ * Attaches the per-request nonce and the CSP built around it.
+ *
+ * The nonce goes on the REQUEST headers as well as the response: Next reads
+ * it from there and stamps it onto its own hydration scripts, which is what
+ * lets script-src drop 'unsafe-inline'. Without that plumbing the page
+ * loads a bootstrap the policy then refuses, and nothing works.
+ */
+function withSecurityHeaders(request: NextRequest, response: NextResponse, nonce: string): NextResponse {
+  response.headers.set("Content-Security-Policy", buildContentSecurityPolicy(nonce));
+  return response;
+}
+
+function requestWithNonce(request: NextRequest, nonce: string): NextResponse {
+  const headers = new Headers(request.headers);
+  headers.set("x-nonce", nonce);
+  return NextResponse.next({ request: { headers } });
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const nonce = generateNonce();
 
   // The platform review console. Separate cookie from staff_session, so a
   // clinic session can never satisfy this gate no matter what role it
@@ -100,7 +126,7 @@ export async function proxy(request: NextRequest) {
     if (!session) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-    return NextResponse.next();
+    return withSecurityHeaders(request, requestWithNonce(request, nonce), nonce);
   }
 
   // Coarse gate only: confirms a valid, unexpired, untampered staff
@@ -118,7 +144,32 @@ export async function proxy(request: NextRequest) {
     if (isAllowed && !isAllowed(session)) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-    return NextResponse.next();
+    return withSecurityHeaders(request, requestWithNonce(request, nonce), nonce);
+  }
+
+  // The patient area.
+  //
+  // Gated here, not only by requirePatientSession() in each page, because
+  // /patient/appointments has a loading.tsx: that puts the page under a
+  // Suspense boundary and streams it, and once streaming has started a
+  // redirect() from the page body cannot set an HTTP status — Next falls
+  // back to a client-side <meta refresh> and the response goes out as 200.
+  // (Exactly the effect already documented above for /app.) No protected
+  // content leaks either way, but a non-browser client sits on a 200 where
+  // it should have been redirected, so the gate moved to where it runs
+  // before rendering begins.
+  //
+  // Coarse, like the /app gate: a valid, unexpired patient cookie. Each
+  // page still calls requirePatientSession() and scopes every query by
+  // patientId — that, not this, is the boundary that keeps one patient out
+  // of another's data.
+  if (pathname.startsWith("/patient") && !PUBLIC_PATIENT_PATHS.has(pathname)) {
+    const token = request.cookies.get(PATIENT_COOKIE)?.value;
+    const session = token ? await verifySession(token) : null;
+    if (!session) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    return withSecurityHeaders(request, requestWithNonce(request, nonce), nonce);
   }
 
   if (request.method === "POST") {
@@ -134,20 +185,20 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return withSecurityHeaders(request, requestWithNonce(request, nonce), nonce);
 }
 
 export const config = {
-  matcher: [
-    "/app/:path*",
-    "/admin/:path*",
-    "/login",
-    "/forgot-password",
-    "/reset-password",
-    "/patient/login",
-    "/patient/register",
-    "/register/:path*",
-    "/book/:path*",
-    "/t/:path*",
-  ],
+  // Everything except static assets and the image optimizer.
+  //
+  // The path-specific list this replaces was right while the proxy only did
+  // auth gating and rate limiting — both of which are still guarded by their
+  // own pathname checks above and unaffected by the wider matcher. It is
+  // wrong now that the proxy also issues the per-request CSP nonce, which
+  // every HTML response needs.
+  //
+  // _next/static and _next/image are excluded because they are immutable
+  // assets served without HTML; running a nonce generator and a session
+  // lookup for each one would be pure overhead.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

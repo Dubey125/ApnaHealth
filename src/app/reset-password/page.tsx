@@ -5,7 +5,7 @@ import { Alert } from "@/components/ui/Alert";
 import { ResetPasswordForm } from "./ResetPasswordForm";
 
 export const metadata = {
-  title: "Choose a new password — ApnaHealth",
+  title: "Choose a new password",
   // A reset link must never end up in a search index or a referrer-driven
   // analytics report.
   robots: { index: false, follow: false },

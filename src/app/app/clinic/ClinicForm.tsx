@@ -5,6 +5,7 @@ import { updateClinic, type UpdateClinicState } from "./actions";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { FormError } from "@/components/ui/FormError";
 import { Button } from "@/components/ui/Button";
+import { CoordinateFields } from "@/components/discovery/CoordinateFields";
 
 const initialState: UpdateClinicState = {};
 
@@ -17,6 +18,8 @@ interface ClinicFormProps {
     city: string;
     state: string;
     postalCode: string | null;
+    latitude: number | null;
+    longitude: number | null;
     phone: string;
   };
 }
@@ -61,6 +64,7 @@ export function ClinicForm({ clinic }: ClinicFormProps) {
           <Input id="clinic-postal" name="postalCode" defaultValue={clinic.postalCode ?? ""} />
         </Label>
       </div>
+      <CoordinateFields latitude={clinic.latitude} longitude={clinic.longitude} />
       <Label htmlFor="clinic-phone">
         Phone
         <Input id="clinic-phone" name="phone" type="tel" required defaultValue={clinic.phone} />

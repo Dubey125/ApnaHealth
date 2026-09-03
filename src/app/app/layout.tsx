@@ -7,6 +7,10 @@ import { ApprovalBanner } from "@/components/ui/ApprovalBanner";
 // this ever runs (coarse gate); this just needs a valid session to know
 // which clinic/role to render in the header — each page underneath still
 // does its own role-specific requireStaffSession() check independently.
+// Never indexed. robots.txt asks crawlers not to fetch this subtree; this
+// is the half that still holds if one ignores it, or if a URL is shared.
+export const metadata = { robots: { index: false, follow: false } };
+
 export default async function StaffAppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireStaffSession();
   const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: session.clinicId } });

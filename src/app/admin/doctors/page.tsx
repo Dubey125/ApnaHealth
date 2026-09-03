@@ -10,7 +10,7 @@ import { cn } from "@/components/ui/cn";
 import { formatClinicDate } from "@/lib/format";
 import { VERIFICATION_FILTERS, needsAttention } from "@/lib/admin/queue";
 
-export const metadata = { title: "Doctors — ApnaHealth Admin" };
+export const metadata = { title: "Doctors · Admin" };
 
 const filterSchema = z.object({ status: z.enum(["PENDING", "VERIFIED", "REJECTED"]).optional() });
 

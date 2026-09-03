@@ -4,6 +4,7 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireStaffSession } from "@/lib/auth/staff";
+import { parseCoordinatePairFields } from "@/lib/geo/formCoordinates";
 
 export interface UpdateClinicState {
   error?: string;
@@ -41,6 +42,14 @@ export async function updateClinic(_prevState: UpdateClinicState, formData: Form
     return { error: "Enter a facility name and type, address, city, state and phone number." };
   }
 
+  // Map location is validated separately from the rest of the form: it is
+  // optional, it is a pair, and its own error message is more useful than
+  // the catch-all above.
+  const coordinates = parseCoordinatePairFields(formData.get("latitude"), formData.get("longitude"));
+  if (!coordinates.ok) {
+    return { error: coordinates.error };
+  }
+
   const now = new Date();
   await prisma.$transaction([
     prisma.clinic.update({
@@ -53,6 +62,8 @@ export async function updateClinic(_prevState: UpdateClinicState, formData: Form
         city: parsed.data.city,
         state: parsed.data.state,
         postalCode: parsed.data.postalCode ?? null,
+        latitude: coordinates.coordinates?.latitude ?? null,
+        longitude: coordinates.coordinates?.longitude ?? null,
         phone: parsed.data.phone,
       },
     }),
@@ -64,7 +75,14 @@ export async function updateClinic(_prevState: UpdateClinicState, formData: Form
         entityType: "Clinic",
         entityId: session.clinicId,
         occurredAt: now,
-        metadata: { name: parsed.data.name, city: parsed.data.city },
+        // The facility's own coordinates are a published property of a
+        // business, not personal data — recording whether they changed
+        // keeps the discovery listing auditable.
+        metadata: {
+          name: parsed.data.name,
+          city: parsed.data.city,
+          hasCoordinates: coordinates.coordinates !== null,
+        },
       },
     }),
   ]);

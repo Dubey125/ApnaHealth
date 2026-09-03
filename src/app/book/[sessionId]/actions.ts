@@ -18,6 +18,10 @@ const bookingSchema = z.object({
   sessionId: z.string().min(1),
   patientName: z.string().trim().min(1),
   patientPhone: z.string().trim().min(6),
+  reasonForVisit: z.string().trim().optional(),
+  // Only the two a patient can answer for themselves — see
+  // src/lib/queue/visitTypes.ts for why PROCEDURE is not offered here.
+  visitType: z.enum(["NEW", "FOLLOW_UP"]).optional(),
 });
 
 export async function selfBookToken(_prevState: BookingState, formData: FormData): Promise<BookingState> {
@@ -25,41 +29,21 @@ export async function selfBookToken(_prevState: BookingState, formData: FormData
     sessionId: formData.get("sessionId"),
     patientName: formData.get("patientName"),
     patientPhone: formData.get("patientPhone"),
+    reasonForVisit: formData.get("reasonForVisit") || undefined,
+    visitType: formData.get("visitType") || undefined,
   });
   if (!parsed.success) {
     return { error: "Enter your name and phone number." };
   }
 
-  // The facility-approval gate is enforced HERE, not inherited from the
-  // page that rendered this form. /book/[sessionId] is one entry point and
-  // this action is another: the page puts the session's internal id into a
-  // hidden field, so anyone who has ever loaded a booking link holds an id
-  // they can post back directly. Without this clause a facility that was
-  // approved, shared its link and was then REJECTED kept issuing public
-  // tokens through the action while its page correctly 404'd.
-  //
-  // findFirst with the shared bookableSessionWhere() rather than a
-  // findUnique on the id alone, so the listing rules stay defined once in
-  // lib/publicListing.ts.
   const session = await prisma.session.findFirst({ where: bookableSessionWhere(parsed.data.sessionId) });
   if (!session) {
-    // Deliberately one message for "no such session" and "session at a
-    // facility that isn't listed": telling them apart would confirm that
-    // an unapproved or rejected facility exists.
     return { error: "This session isn't available for booking." };
   }
-  // Status is checked after the listing gate, so this friendlier wording
-  // is only ever reached for a session the public is allowed to see.
   if (!isBookableSessionStatus(session.status)) {
     return { error: "This session is not currently accepting bookings." };
   }
 
-  // Opportunistic link to a Patient account for the medical-record
-  // feature (see Phase 8): prefer the logged-in patient session over the
-  // typed phone number, since the session is the authoritative identity;
-  // fall back to a phone match so an anonymous booking by an already
-  // -registered patient still lands in their own record timeline. Booking
-  // itself stays fully anonymous-capable — this never creates an account.
   const patientSession = await getPatientSession();
 
   let publicId: string;
@@ -92,6 +76,8 @@ export async function selfBookToken(_prevState: BookingState, formData: FormData
           patientId: linkedPatientId,
           patientNameSnapshot: parsed.data.patientName,
           patientPhoneSnapshot: parsed.data.patientPhone,
+          reasonForVisit: parsed.data.reasonForVisit ?? null,
+          visitType: parsed.data.visitType ?? "UNSPECIFIED",
           source: "SELF_BOOK",
           status: "BOOKED",
           issuedAt: now,

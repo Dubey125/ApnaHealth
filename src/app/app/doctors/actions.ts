@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { parsePhotoUrl } from "@/lib/images";
 import { requireStaffSession } from "@/lib/auth/staff";
 import { slugify } from "@/lib/slugify";
 
@@ -20,7 +21,6 @@ const createDoctorSchema = z.object({
   languagesText: z.string().trim().min(1).optional(),
   consultationFeeRupees: z.coerce.number().min(0).optional(),
   bio: z.string().trim().min(1).optional(),
-  photoUrl: z.string().trim().url().optional(),
   phone: z.string().trim().min(6).optional(),
   email: z.string().email().optional(),
   defaultConsultMinutes: z.coerce.number().int().min(1).max(120).optional(),
@@ -47,13 +47,18 @@ export async function createDoctor(_prevState: CreateDoctorState, formData: Form
     languagesText: formData.get("languagesText") || undefined,
     consultationFeeRupees: formData.get("consultationFeeRupees") || undefined,
     bio: formData.get("bio") || undefined,
-    photoUrl: formData.get("photoUrl") || undefined,
     phone: formData.get("phone") || undefined,
     email: formData.get("email") || undefined,
     defaultConsultMinutes: formData.get("defaultConsultMinutes") || undefined,
   });
   if (!parsed.success) {
-    return { error: "Enter a name, specialty and qualification. Check that any numbers and the photo URL are valid." };
+    return { error: "Enter a name, specialty and qualification, and check that any numbers are valid." };
+  }
+
+  // Validated apart from the rest of the form: see lib/images.ts.
+  const photo = parsePhotoUrl(formData.get("photoUrl"));
+  if (!photo.ok) {
+    return { error: photo.error };
   }
 
   // Doctor.slug is globally unique (it's the public /doctors/[slug] path),
@@ -83,7 +88,7 @@ export async function createDoctor(_prevState: CreateDoctorState, formData: Form
         consultationFeeMinor:
           parsed.data.consultationFeeRupees != null ? Math.round(parsed.data.consultationFeeRupees * 100) : undefined,
         bio: parsed.data.bio,
-        photoUrl: parsed.data.photoUrl,
+        photoUrl: photo.url,
         phone: parsed.data.phone,
         email: parsed.data.email,
         defaultConsultMinutes: parsed.data.defaultConsultMinutes,

@@ -1,7 +1,7 @@
 # Healthcare MVP — Claude Code Project Rules
 
 ## Source of truth
-This repository implements the first MVP of the healthcare startup:
+This repository implements of the healthcare startup:
 1. Doctor discovery
 2. Verified doctor profile
 3. Appointment / digital serial

@@ -1,0 +1,95 @@
+name: CI
+
+# 277 tests existed with nothing running them. This is the gate that has to
+# be green before a pilot: a regression in the public-listing boundary or a
+# soft-404 is not something to find in production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, unit tests, build
+    runs-on: ubuntu-latest
+    env:
+      # The build must not need a reachable database — see the comment in
+      # src/app/sitemap.ts. This deliberately unreachable URL is what keeps
+      # that true: if a page starts requiring a database at build time, this
+      # job fails rather than the deploy.
+      DATABASE_URL: postgresql://unused:unused@127.0.0.1:5999/unused
+      SESSION_SECRET: ci-session-secret-at-least-32-characters-long
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx eslint .
+      - run: npm test
+      # `next build` reports "Ecmascript file had an error" and still exits
+      # zero — which is how a node:crypto import that does not exist in the
+      # edge runtime compiled "successfully" while breaking error reporting
+      # there. The output is checked as well as the exit code.
+      - name: Build, failing on errors the exit code hides
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+          if grep -qiE "Ecmascript file had an error|Failed to compile" build.log; then
+            echo "::error::the build reported an error despite exiting zero"
+            exit 1
+          fi
+
+  e2e:
+    name: End-to-end against a real database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: apnahealth
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/apnahealth
+      SESSION_SECRET: ci-session-secret-at-least-32-characters-long
+      SITE_URL: http://localhost:3000
+      # The seed refuses any non-loopback host and any production NODE_ENV
+      # (src/lib/seedGuard.ts); this database is loopback, so no override is
+      # needed and none is given.
+      SEED_OWNER_PASSWORD: ci-owner-password
+      SEED_FRONT_DESK_PASSWORD: ci-frontdesk-password
+      SEED_DOCTOR_PASSWORD: ci-doctor-password
+      SEED_PATIENT_PASSWORD: ci-patient-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - run: npx prisma db seed
+      - run: npm run build
+      - name: Start the server
+        run: npm start &
+      - name: Wait for it to answer
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/healthz > /dev/null && exit 0
+            sleep 2
+          done
+          echo "server never became healthy"; exit 1
+      - run: npm run test:e2e

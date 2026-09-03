@@ -7,6 +7,7 @@ import { FormError } from "@/components/ui/FormError";
 import { Button } from "@/components/ui/Button";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { IndiaAddressFields } from "@/components/ui/IndiaAddressFields";
+import { CoordinateFields } from "@/components/discovery/CoordinateFields";
 
 const initialState: RegisterState = {};
 
@@ -32,6 +33,11 @@ export function RegisterFacilityForm() {
         </div>
 
         <IndiaAddressFields idPrefix="reg" />
+
+        {/* Optional, and offered here because whoever is registering is
+            usually sitting in the facility — the one moment their device
+            is the most accurate geocoder available. */}
+        <CoordinateFields latitude={null} longitude={null} idPrefix="reg" />
 
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">Reception phone</span>

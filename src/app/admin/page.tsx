@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
 import { needsAttention, waitingLabel } from "@/lib/admin/queue";
 
-export const metadata = { title: "Review queue — ApnaHealth Admin" };
+export const metadata = { title: "Review queue · Admin" };
 
 // The reviewer's home: the two things actually waiting on a human, and
 // nothing else. Deliberately not a metrics dashboard — a queue that opens

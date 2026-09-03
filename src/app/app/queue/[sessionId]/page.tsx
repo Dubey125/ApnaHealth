@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/Badge";
 import { SessionStatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconClock } from "@/components/ui/icons";
+import { QUEUE_ORDER_BY, isPrioritised } from "@/lib/queue/ordering";
+import { hasVisitType, visitTypeLabel } from "@/lib/queue/visitTypes";
 
 interface QueuePageProps {
   params: Promise<{ sessionId: string }>;
@@ -40,11 +42,11 @@ export default async function QueuePage({ params }: QueuePageProps) {
     throw new Error("You can only manage your own sessions.");
   }
 
-  const [current, waiting, breaks, recentlyCompleted, completedCount, noShowCount] = await Promise.all([
+  const [current, waiting, breaks, recentlyCompleted, completedCount, noShowCount, reorderEvents] = await Promise.all([
     prisma.token.findFirst({ where: { sessionId: clinicSession.id, status: "IN_CONSULT" } }),
     prisma.token.findMany({
       where: { sessionId: clinicSession.id, status: { in: ["BOOKED", "CHECKED_IN"] } },
-      orderBy: { tokenNumber: "asc" },
+      orderBy: QUEUE_ORDER_BY,
     }),
     prisma.sessionBreak.findMany({ where: { sessionId: clinicSession.id }, orderBy: { startAt: "asc" } }),
     // Consultation-record authoring is doctor-only (ACCESS_MATRIX.md), so
@@ -59,17 +61,34 @@ export default async function QueuePage({ params }: QueuePageProps) {
       : Promise.resolve([]),
     prisma.token.count({ where: { sessionId: clinicSession.id, status: "COMPLETED" } }),
     prisma.token.count({ where: { sessionId: clinicSession.id, status: "NO_SHOW" } }),
+    // Why anyone is out of natural order. The audit trail is the record,
+    // but a record nobody reads is not much use to the doctor about to
+    // see a patient who arrived after the people still waiting.
+    prisma.queueEvent.findMany({
+      where: { sessionId: clinicSession.id, type: "TOKEN_REORDERED" },
+      orderBy: { occurredAt: "desc" },
+      select: { tokenId: true, occurredAt: true, metadata: true, actorStaffUser: { select: { name: true } } },
+    }),
   ]);
   const now = new Date();
+
+  // Most recent reorder per token.
+  const reorderNotes = new Map<string, { reason: string; by: string | null }>();
+  for (const event of reorderEvents) {
+    if (!event.tokenId || reorderNotes.has(event.tokenId)) continue;
+    const metadata = event.metadata as { reason?: unknown } | null;
+    const reason = typeof metadata?.reason === "string" ? metadata.reason : null;
+    if (reason) reorderNotes.set(event.tokenId, { reason, by: event.actorStaffUser?.name ?? null });
+  }
 
   const queueOpen = clinicSession.status === "OPEN" || clinicSession.status === "IN_PROGRESS";
   const activeBreak = breaks.find((b) => now >= b.startAt && now < b.endAt) ?? null;
 
-  // The single most important distinction on this screen: "call next" only
-  // ever picks the lowest-numbered CHECKED_IN token (see callNextToken), so
-  // a booked patient who hasn't arrived is NOT callable. Showing both in
-  // one list invites the front desk to expect a name to come up that
-  // physically cannot.
+  // The single most important distinction on this screen: "call next"
+  // only ever picks a CHECKED_IN token — the first in effective queue
+  // order (see QUEUE_ORDER_BY) — so a booked patient who hasn't arrived is
+  // NOT callable. Showing both in one list invites the front desk to
+  // expect a name to come up that physically cannot.
   const readyToCall = waiting.filter((t) => t.status === "CHECKED_IN");
   const notArrived = waiting.filter((t) => t.status === "BOOKED");
   const nextUp = readyToCall[0] ?? null;
@@ -96,8 +115,18 @@ export default async function QueuePage({ params }: QueuePageProps) {
             <SessionStatusBadge status={clinicSession.status} />
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <TransitionButtons sessionId={clinicSession.id} status={clinicSession.status} returnTo="queue" />
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/app/queue/${clinicSession.id}/display`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-foreground hover:border-primary hover:text-primary transition-colors shadow-sm"
+            >
+              <span>📺 OPD TV Screen</span>
+            </Link>
+            <TransitionButtons sessionId={clinicSession.id} status={clinicSession.status} returnTo="queue" />
+          </div>
           <p className="flex items-center gap-1.5 text-xs text-muted" role="status" aria-live="polite">
             <IconClock className="h-3.5 w-3.5" />
             Updated {formatClinicTime(now)}
@@ -155,6 +184,7 @@ export default async function QueuePage({ params }: QueuePageProps) {
                   {[
                     current.patientAgeSnapshot != null ? `${current.patientAgeSnapshot} yrs` : null,
                     current.patientSexSnapshot,
+                    hasVisitType(current.visitType) ? visitTypeLabel(current.visitType) : null,
                     current.patientPhoneSnapshot,
                   ]
                     .filter(Boolean)
@@ -201,6 +231,8 @@ export default async function QueuePage({ params }: QueuePageProps) {
               <ul className="flex max-h-[24rem] flex-col gap-2 overflow-y-auto rounded-lg border border-border p-2">
                 {readyToCall.map((token) => {
                   const isNext = nextUp?.id === token.id;
+                  const moved = isPrioritised(token);
+                  const note = reorderNotes.get(token.id) ?? null;
                   return (
                     <li key={token.id}>
                       <Card
@@ -216,11 +248,19 @@ export default async function QueuePage({ params }: QueuePageProps) {
                             <span className="flex flex-wrap items-center gap-2">
                               <span className="truncate font-medium text-foreground">{token.patientNameSnapshot}</span>
                               {isNext && <Badge variant="info">Next up</Badge>}
+                              {moved && <Badge variant="warning">Moved up</Badge>}
                             </span>
                             <span className="text-xs text-muted">
                               Waiting {waitedFor(token.checkedInAt, now) ?? "—"}
                               {token.source === "WALK_IN" ? " · walk-in" : ""}
+                              {hasVisitType(token.visitType) ? ` · ${visitTypeLabel(token.visitType)}` : ""}
                             </span>
+                            {moved && note && (
+                              <span className="text-xs text-warning">
+                                {note.reason}
+                                {note.by ? ` — ${note.by}` : ""}
+                              </span>
+                            )}
                           </span>
                         </div>
                         <WaitingRowActions
@@ -228,6 +268,8 @@ export default async function QueuePage({ params }: QueuePageProps) {
                           tokenId={token.id}
                           tokenLabel={`#${token.tokenNumber} ${token.patientNameSnapshot}`}
                           showCheckIn={false}
+                          canPrioritise={!isNext}
+                          isPrioritised={moved}
                         />
                       </Card>
                     </li>

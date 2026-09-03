@@ -6,7 +6,7 @@
    as bg-primary, text-muted, border-border, etc. */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
   --primary: #0f766e;
   --primary-foreground: #ffffff;
   --surface: #f8fafc;
@@ -36,13 +36,13 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #090d16;
+    --foreground: #f1f5f9;
     --primary: #2dd4bf;
-    --primary-foreground: #052e2b;
-    --surface: #111827;
-    --border: #27272a;
-    --muted: #a1a1aa;
+    --primary-foreground: #042f2e;
+    --surface: #0f172a;
+    --border: #1e293b;
+    --muted: #94a3b8;
     --success: #4ade80;
     --warning: #fbbf24;
     --danger: #f87171;
@@ -53,28 +53,78 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  /* Was hardcoded to Arial, which silently overrode the Geist font
-     layout.tsx loads — DESIGN_SYSTEM.md's typography scale assumes Geist
-     ("Keep the existing Geist Sans/Mono font loading in layout.tsx"), so
-     the whole site had been rendering in a fallback face it never chose. */
   font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Keeps page content clear of the signed-in patient's fixed bottom tab
-   bar without every patient page needing its own padding class. Keyed off
-   the bar's presence, so it applies exactly when the bar is rendered and
-   never for signed-out visitors or staff pages. Matches the bar's own
-   `lg:hidden` breakpoint. In a browser without :has() support the only
-   consequence is that the last row of content sits under the bar. */
+/* Keeps page content clear of the signed-in patient's fixed bottom tab bar */
 @media (max-width: 1023px) {
   body:has(#patient-tab-bar) {
     padding-bottom: 4.5rem;
   }
 }
 
-/* Respect a reader's reduced-motion preference for the one automatic
-   animation in the app (the live "now serving" pulse on the queue
-   tracker) — DESIGN_SYSTEM.md otherwise allows no auto-playing motion. */
+/* Print Styles for Prescriptions and OPD Token Slips */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt;
+  }
+
+  header,
+  footer,
+  nav,
+  #patient-tab-bar,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .printable-prescription {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .printable-token-slip {
+    display: block !important;
+    width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 10px !important;
+    border: none !important;
+    font-size: 10pt !important;
+  }
+
+  a[href]:after {
+    content: none !important;
+  }
+}
+
+@keyframes pulse-gentle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.03);
+  }
+}
+
+.animate-pulse-gentle {
+  animation: pulse-gentle 2.5s ease-in-out infinite;
+}
+
+/* Respect a reader's reduced-motion preference */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

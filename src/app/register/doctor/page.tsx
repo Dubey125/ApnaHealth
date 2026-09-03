@@ -4,7 +4,7 @@ import { Footer } from "@/components/ui/Footer";
 import { RegisterDoctorForm } from "./RegisterDoctorForm";
 
 export const metadata = {
-  title: "Register as a doctor · ApnaHealth",
+  title: "Register as a doctor",
 };
 
 export default function RegisterDoctorPage() {

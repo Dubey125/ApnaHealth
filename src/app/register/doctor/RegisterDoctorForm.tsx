@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { SpecialtySelect } from "@/components/ui/SpecialtySelect";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { IndiaAddressFields } from "@/components/ui/IndiaAddressFields";
+import { CoordinateFields } from "@/components/discovery/CoordinateFields";
 
 const initialState: RegisterState = {};
 
@@ -56,6 +57,10 @@ export function RegisterDoctorForm() {
         </Label>
 
         <IndiaAddressFields idPrefix="rd" />
+
+        {/* Optional. The practice is the Clinic row, so this is the same
+            map location patients search "near me" against. */}
+        <CoordinateFields latitude={null} longitude={null} idPrefix="rd" />
 
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">Practice phone</span>

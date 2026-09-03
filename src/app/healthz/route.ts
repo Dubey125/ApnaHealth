@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { logError } from "@/lib/log";
+import { reportError } from "@/lib/monitoring";
 
 // Unauthenticated liveness/readiness probe for uptime monitors and the
 // deployment platform. Deliberately returns nothing beyond ok/not-ok on
@@ -10,7 +10,7 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`;
     return NextResponse.json({ status: "ok" }, { status: 200 });
   } catch (error) {
-    logError(error, { path: "/healthz" });
+    reportError(error, { path: "/healthz" });
     return NextResponse.json({ status: "error" }, { status: 503 });
   }
 }

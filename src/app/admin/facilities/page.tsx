@@ -10,7 +10,7 @@ import { cn } from "@/components/ui/cn";
 import { formatClinicDate } from "@/lib/format";
 import { APPROVAL_FILTERS, needsAttention } from "@/lib/admin/queue";
 
-export const metadata = { title: "Facilities — ApnaHealth Admin" };
+export const metadata = { title: "Facilities · Admin" };
 
 const filterSchema = z.object({ status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional() });
 
@@ -44,6 +44,8 @@ export default async function AdminFacilitiesPage({ searchParams }: FacilitiesPa
         city: true,
         state: true,
         approvalStatus: true,
+        latitude: true,
+        longitude: true,
         createdAt: true,
         _count: { select: { doctors: true } },
       },
@@ -113,6 +115,16 @@ export default async function AdminFacilitiesPage({ searchParams }: FacilitiesPa
                 </TableCell>
                 <TableCell className="text-muted">
                   {clinic.city}, {clinic.state}
+                  {/* Flagged only where it costs something: an approved
+                      facility with no coordinates is fully listed but
+                      invisible to "search near you", which is easy to
+                      miss precisely because nothing looks broken.
+                      Backfill with npm run clinic:location. */}
+                  {clinic.approvalStatus === "APPROVED" && (clinic.latitude === null || clinic.longitude === null) && (
+                    <Badge variant="warning" className="ml-2">
+                      No map location
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted">{clinic._count.doctors}</TableCell>
                 <TableCell className="whitespace-nowrap text-muted">

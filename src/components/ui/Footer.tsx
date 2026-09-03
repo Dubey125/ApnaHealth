@@ -20,6 +20,8 @@ const COLUMNS: FooterColumn[] = [
     heading: "Patients",
     links: [
       { href: "/doctors", label: "Find a doctor" },
+      { href: "/clinics", label: "Find a clinic" },
+      { href: "/hospitals", label: "Find a hospital" },
       { href: "/login", label: "Patient login" },
       { href: "/patient/register", label: "Create an account" },
     ],

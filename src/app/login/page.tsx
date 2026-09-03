@@ -5,7 +5,11 @@ import { Alert } from "@/components/ui/Alert";
 import { LoginForm } from "./LoginForm";
 
 export const metadata = {
-  title: "Sign in — ApnaHealth",
+  title: "Sign in",
+  // Crawlable but not indexed — a sign-in form has nothing to offer a
+  // search result, and robots.txt deliberately does not block it (see
+  // robots.ts: a blocked page cannot be de-indexed).
+  robots: { index: false, follow: true },
 };
 
 // Was "Staff login", reachable only from /get-started, while patients had a

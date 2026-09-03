@@ -7,6 +7,9 @@ import {
   consultDurationStats,
   predictionAccuracy,
   type TokenMetricInput,
+  consultDurationByVisitType,
+  predictionAccuracyByModel,
+  type TypedTokenMetricInput,
 } from "./metrics";
 
 function token(overrides: Partial<TokenMetricInput> & { status: TokenMetricInput["status"] }): TokenMetricInput {
@@ -104,4 +107,68 @@ test("predictionAccuracy is null on an empty set", () => {
   assert.equal(result.medianAbsErrorSeconds, null);
   assert.equal(result.windowHitRate, null);
   assert.equal(result.sampleSize, 0);
+});
+
+// --- Per-visit-type and per-model breakdowns ---
+
+const completed = (visitType: string, durationSeconds: number): TypedTokenMetricInput => ({
+  status: "COMPLETED",
+  visitType,
+  checkedInAt: new Date("2026-01-01T09:00:00Z"),
+  consultStartedAt: new Date("2026-01-01T10:00:00Z"),
+  consultEndedAt: new Date(new Date("2026-01-01T10:00:00Z").getTime() + durationSeconds * 1000),
+});
+
+test("consultDurationByVisitType separates the types and sorts longest first", () => {
+  const rows = consultDurationByVisitType([
+    completed("FOLLOW_UP", 120),
+    completed("FOLLOW_UP", 180),
+    completed("PROCEDURE", 1800),
+    completed("NEW", 600),
+  ]);
+  assert.deepEqual(
+    rows.map((r) => r.visitType),
+    ["PROCEDURE", "NEW", "FOLLOW_UP"],
+  );
+  assert.equal(rows[2].medianSeconds, 150);
+  assert.equal(rows[2].sampleSize, 2);
+});
+
+test("consultDurationByVisitType omits a type with no completed consultations", () => {
+  // A booked-then-cancelled follow-up is not evidence about how long a
+  // follow-up takes, and a row reading "—" invites reading it as zero.
+  const rows = consultDurationByVisitType([
+    completed("NEW", 600),
+    { status: "CANCELLED", visitType: "FOLLOW_UP", checkedInAt: null, consultStartedAt: null, consultEndedAt: null },
+  ]);
+  assert.deepEqual(rows.map((r) => r.visitType), ["NEW"]);
+});
+
+test("predictionAccuracyByModel keeps each model's predictions separate", () => {
+  const at = (iso: string) => new Date(iso);
+  const evalFor = (modelVersion: string, actual: string) => ({
+    modelVersion,
+    predictedStartAt: at("2026-01-01T10:00:00Z"),
+    windowStartAt: at("2026-01-01T09:55:00Z"),
+    windowEndAt: at("2026-01-01T10:10:00Z"),
+    actualStartAt: at(actual),
+  });
+
+  const rows = predictionAccuracyByModel([
+    evalFor("baseline-v0", "2026-01-01T10:30:00Z"), // miss
+    evalFor("baseline-v0", "2026-01-01T10:40:00Z"), // miss
+    evalFor("baseline-v1", "2026-01-01T10:05:00Z"), // hit
+    evalFor("baseline-v1", "2026-01-01T10:02:00Z"), // hit
+  ]);
+
+  assert.deepEqual(rows.map((r) => r.modelVersion), ["baseline-v0", "baseline-v1"]);
+  assert.equal(rows[0].windowHitRate, 0);
+  assert.equal(rows[1].windowHitRate, 1);
+  // Sample size travels with the rate, so a rate can never be read alone.
+  assert.equal(rows[0].sampleSize, 2);
+  assert.equal(rows[1].sampleSize, 2);
+});
+
+test("predictionAccuracyByModel returns nothing rather than a zero row when there is no data", () => {
+  assert.deepEqual(predictionAccuracyByModel([]), []);
 });

@@ -4,7 +4,11 @@ import { Footer } from "@/components/ui/Footer";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 
 export const metadata = {
-  title: "Forgot password — ApnaHealth",
+  title: "Forgot password",
+  // Crawlable but not indexed — a sign-in form has nothing to offer a
+  // search result, and robots.txt deliberately does not block it (see
+  // robots.ts: a blocked page cannot be de-indexed).
+  robots: { index: false, follow: true },
 };
 
 // Serves all three account kinds, like /login does — a patient, a clinic

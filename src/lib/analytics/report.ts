@@ -5,11 +5,15 @@ import {
   waitTimeStats,
   consultDurationStats,
   predictionAccuracy,
+  consultDurationByVisitType,
+  predictionAccuracyByModel,
   type TokenCounts,
   type WaitTimeStats,
   type ConsultDurationStats,
   type PredictionAccuracy,
-  type PredictionEvalInput,
+  type VersionedPredictionEvalInput,
+  type VisitTypeDuration,
+  type ModelAccuracy,
 } from "./metrics";
 import type { ReportRange } from "./range";
 
@@ -20,13 +24,17 @@ export interface ClinicReport {
   noShowRate: number | null;
   waitTime: WaitTimeStats;
   consultDuration: ConsultDurationStats;
+  consultDurationByType: VisitTypeDuration[];
   prediction: PredictionAccuracy;
+  /** Same accuracy, split by the model that produced each prediction. */
+  predictionByModel: ModelAccuracy[];
 }
 
 interface LatestSnapshot {
   predictedStartAt: Date;
   windowStartAt: Date;
   windowEndAt: Date;
+  modelVersion: string;
 }
 
 // One snapshot can be recalculated many times per token (e.g. a scheduled
@@ -37,7 +45,7 @@ async function latestSnapshotByToken(tokenIds: string[]): Promise<Map<string, La
   const snapshots = await prisma.predictionSnapshot.findMany({
     where: { tokenId: { in: tokenIds } },
     orderBy: { createdAt: "desc" },
-    select: { tokenId: true, predictedStartAt: true, windowStartAt: true, windowEndAt: true },
+    select: { tokenId: true, predictedStartAt: true, windowStartAt: true, windowEndAt: true, modelVersion: true },
   });
   const latest = new Map<string, LatestSnapshot>();
   for (const snapshot of snapshots) {
@@ -58,12 +66,12 @@ export async function buildClinicReport(clinicId: string, range: ReportRange, do
       session: { clinicId, ...(doctorId ? { doctorId } : {}) },
       issuedAt: { gte: range.from, lt: range.to },
     },
-    select: { id: true, status: true, checkedInAt: true, consultStartedAt: true, consultEndedAt: true },
+    select: { id: true, status: true, checkedInAt: true, consultStartedAt: true, consultEndedAt: true, visitType: true },
   });
 
   const startedTokenIds = tokens.filter((t) => t.consultStartedAt).map((t) => t.id);
   const latest = await latestSnapshotByToken(startedTokenIds);
-  const predictionEvals: PredictionEvalInput[] = tokens
+  const predictionEvals: VersionedPredictionEvalInput[] = tokens
     .filter((t): t is typeof t & { consultStartedAt: Date } => !!t.consultStartedAt && latest.has(t.id))
     .map((t) => ({ ...latest.get(t.id)!, actualStartAt: t.consultStartedAt }));
 
@@ -74,7 +82,9 @@ export async function buildClinicReport(clinicId: string, range: ReportRange, do
     noShowRate: noShowRate(tokens),
     waitTime: waitTimeStats(tokens),
     consultDuration: consultDurationStats(tokens),
+    consultDurationByType: consultDurationByVisitType(tokens),
     prediction: predictionAccuracy(predictionEvals),
+    predictionByModel: predictionAccuracyByModel(predictionEvals),
   };
 }
 
@@ -85,6 +95,7 @@ export interface AnonymizedVisitRow {
   doctorSpecialty: string;
   tokenNumber: number;
   source: string;
+  visitType: string;
   status: string;
   issuedAt: string;
   checkedInAt: string;
@@ -95,6 +106,7 @@ export interface AnonymizedVisitRow {
   predictedStartAt: string;
   windowStartAt: string;
   windowEndAt: string;
+  modelVersion: string;
   withinWindow: "true" | "false" | "";
 }
 
@@ -134,6 +146,7 @@ export async function buildAnonymizedRows(clinicId: string, range: ReportRange, 
       doctorSpecialty: t.session.doctor.specialty,
       tokenNumber: t.tokenNumber,
       source: t.source,
+      visitType: t.visitType,
       status: t.status,
       issuedAt: t.issuedAt.toISOString(),
       checkedInAt: t.checkedInAt?.toISOString() ?? "",
@@ -144,6 +157,7 @@ export async function buildAnonymizedRows(clinicId: string, range: ReportRange, 
       predictedStartAt: snapshot?.predictedStartAt.toISOString() ?? "",
       windowStartAt: snapshot?.windowStartAt.toISOString() ?? "",
       windowEndAt: snapshot?.windowEndAt.toISOString() ?? "",
+      modelVersion: snapshot?.modelVersion ?? "",
       withinWindow,
     };
   });

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { parsePhotoUrl } from "@/lib/images";
 import { requireDoctorContext } from "@/lib/auth/staff";
 
 export interface UpdateDoctorProfileState {
@@ -16,7 +17,6 @@ const updateDoctorProfileSchema = z.object({
   consultationFeeRupees: z.coerce.number().min(0).optional(),
   defaultConsultMinutes: z.coerce.number().int().min(1).max(120).optional(),
   bio: z.string().trim().min(1).optional(),
-  photoUrl: z.string().trim().url().optional(),
   phone: z.string().trim().min(6).optional(),
   email: z.string().email().optional(),
 });
@@ -41,12 +41,19 @@ export async function updateDoctorProfile(
     consultationFeeRupees: formData.get("consultationFeeRupees") || undefined,
     defaultConsultMinutes: formData.get("defaultConsultMinutes") || undefined,
     bio: formData.get("bio") || undefined,
-    photoUrl: formData.get("photoUrl") || undefined,
     phone: formData.get("phone") || undefined,
     email: formData.get("email") || undefined,
   });
   if (!parsed.success) {
-    return { error: "Enter a qualification. Check that any numbers and the photo URL are valid." };
+    return { error: "Enter a qualification, and check that any numbers are valid." };
+  }
+
+  // The photo is validated separately: it is the one user-supplied URL this
+  // app renders, and it needs stricter rules than "is a URL" — see
+  // lib/images.ts for what the old validator let through.
+  const photo = parsePhotoUrl(formData.get("photoUrl"));
+  if (!photo.ok) {
+    return { error: photo.error };
   }
 
   const now = new Date();
@@ -61,7 +68,7 @@ export async function updateDoctorProfile(
           parsed.data.consultationFeeRupees != null ? Math.round(parsed.data.consultationFeeRupees * 100) : null,
         defaultConsultMinutes: parsed.data.defaultConsultMinutes ?? 6,
         bio: parsed.data.bio ?? null,
-        photoUrl: parsed.data.photoUrl ?? null,
+        photoUrl: photo.url,
         phone: parsed.data.phone ?? null,
         email: parsed.data.email ?? null,
       },
