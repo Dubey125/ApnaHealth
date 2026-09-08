@@ -122,6 +122,35 @@ enum FacilityType {
   HOSPITAL
 }
 
+// Where a clinic stands with us commercially.
+//
+// TRIALING and ACTIVE are entitled. PAST_DUE is still entitled — a payment
+// that failed this morning is usually a card that expired, not a customer
+// who left, and a clinic mid-OPD is the worst possible moment to find out.
+// Only after the grace period expires does a subscription become
+// SUSPENDED, and even then the degradation is deliberately partial (see
+// src/lib/billing/entitlements.ts).
+//
+// CANCELLED is the customer's own decision, taken deliberately.
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+// Priced per doctor seat, which is the unit that actually tracks the value
+// a clinic gets: one more doctor is one more queue being run. Per-clinic
+// pricing punishes the single-doctor practice that can least afford it,
+// and usage pricing on token volume would give a clinic a reason to keep
+// patients off the system on a busy day — exactly backwards.
+enum SubscriptionPlan {
+  TRIAL
+  STARTER
+  GROWTH
+}
+
 model Clinic {
   id                String         @id @default(cuid())
   name              String
@@ -167,6 +196,7 @@ model Clinic {
   createdAt         DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
 
+  subscription        Subscription?
   staffUsers          StaffUser[]
   doctors             Doctor[]
   sessions            Session[]
@@ -525,6 +555,71 @@ model AuditEvent {
   metadata    Json?
 
   @@index([clinicId, occurredAt])
+}
+
+// A clinic's commercial relationship with ApnaHealth.
+//
+// Deliberately holds NO card, bank or payment-instrument data of any kind.
+// Card handling is the payment provider's job and storing it would drag
+// this codebase into PCI scope for no benefit; the provider's own
+// identifiers are kept so a subscription can be reconciled against them,
+// and nothing else.
+//
+// providerCustomerId / providerSubscriptionId are nullable because no
+// provider is wired up yet. The state machine is deliberately independent
+// of who processes the payment — a provider webhook will eventually be one
+// more caller of the same transitions that an admin already uses.
+model Subscription {
+  id       String @id @default(cuid())
+  clinicId String @unique
+  clinic   Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  plan   SubscriptionPlan   @default(TRIAL)
+  status SubscriptionStatus @default(TRIALING)
+
+  // How many doctors this clinic may have listed. Enforced on doctor
+  // creation, never retroactively: exceeding it is prevented, and a clinic
+  // that somehow ends up over its limit is warned, never silently stripped
+  // of doctors it depends on.
+  doctorSeats Int @default(1)
+
+  trialEndsAt          DateTime? @db.Timestamptz(3)
+  currentPeriodStartAt DateTime? @db.Timestamptz(3)
+  currentPeriodEndAt   DateTime? @db.Timestamptz(3)
+
+  // How long a failed payment is tolerated before the account degrades.
+  // Set when a subscription enters PAST_DUE, cleared when it recovers.
+  gracePeriodEndsAt DateTime? @db.Timestamptz(3)
+
+  providerCustomerId     String?
+  providerSubscriptionId String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  events SubscriptionEvent[]
+
+  @@index([status])
+}
+
+// Append-only history of every commercial state change: who or what caused
+// it, when, and what it moved between. A billing dispute is answered from
+// this table, and "the system changed it" must never be the whole answer.
+model SubscriptionEvent {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  fromStatus SubscriptionStatus?
+  toStatus   SubscriptionStatus
+  reason     String
+  // Null when the change was made by the system (a trial lapsing, a grace
+  // period expiring) rather than by a person.
+  actorAdminId String?
+  occurredAt   DateTime @db.Timestamptz(3)
+  metadata     Json?
+
+  @@index([subscriptionId, occurredAt])
 }
 
 // The ApnaHealth review team: staff of the platform, not of any clinic.

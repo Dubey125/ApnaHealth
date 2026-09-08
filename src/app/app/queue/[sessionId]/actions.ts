@@ -4,6 +4,7 @@ import { z } from "zod";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { loadEntitlements } from "@/lib/billing/load";
 import { loadSessionForStaff } from "@/lib/queue/staffSessionAccess";
 import { allocateNextTokenNumber } from "@/lib/queue/tokenNumbering";
 import { NORMAL_PRIORITY, QUEUE_ORDER_BY, countAhead, priorityToMoveToFront } from "@/lib/queue/ordering";
@@ -82,6 +83,15 @@ export async function issueWalkInToken(_prevState: QueueActionState, formData: F
   const { clinicSession } = await loadSessionForStaff(parsed.data.sessionId);
   if (clinicSession.status !== "OPEN" && clinicSession.status !== "IN_PROGRESS") {
     return { error: "This session is not currently accepting tokens." };
+  }
+
+  // A token is a promise to a patient, so issuing one is a NEW commitment
+  // and stops when a subscription lapses. Everything downstream of a
+  // token that already exists — check in, call next, complete, record —
+  // is deliberately untouched by billing: see lib/billing/entitlements.ts.
+  const entitlements = await loadEntitlements(clinicSession.clinicId);
+  if (!entitlements.canIssueTokens) {
+    return { error: "Your subscription is not active, so new tokens cannot be issued. Patients already in the queue can still be seen." };
   }
 
   const now = new Date();

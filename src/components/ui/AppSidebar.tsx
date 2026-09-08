@@ -52,6 +52,7 @@ const SECTIONS_BY_ROLE: Record<StaffRole, NavSection[]> = {
         { href: "/app/doctors", label: "Doctors", icon: IconStethoscope },
         { href: "/app/staff", label: "Staff", icon: IconUsers },
         { href: "/app/clinic", label: "Facility profile", icon: IconBuilding },
+        { href: "/app/billing", label: "Subscription", icon: IconBuilding },
       ],
     },
     {

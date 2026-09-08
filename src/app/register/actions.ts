@@ -8,6 +8,7 @@ import { createStaffSession } from "@/lib/auth/staff";
 import { slugify } from "@/lib/slugify";
 import { parseCoordinatePairFields } from "@/lib/geo/formCoordinates";
 import { uniqueClinicSlug } from "@/lib/clinicSlug";
+import { trialDefaults } from "@/lib/billing/subscription";
 
 export interface RegisterState {
   error?: string;
@@ -112,6 +113,14 @@ export async function registerFacility(_prevState: RegisterState, formData: Form
         longitude: coordinates.coordinates?.longitude ?? null,
         phone: parsed.data.phone,
       },
+    });
+    // Every new facility starts a trial in the same transaction that
+    // creates it, so a clinic can never exist without a commercial state.
+    // A missing subscription row fails OPEN (see UNBILLED_ENTITLEMENTS),
+    // which is the right default but should never be relied on for a
+    // clinic we created ourselves.
+    await tx.subscription.create({
+      data: { clinicId: clinic.id, ...trialDefaults({ now: new Date() }) },
     });
     const staff = await tx.staffUser.create({
       data: {
@@ -238,6 +247,14 @@ export async function registerDoctor(_prevState: RegisterState, formData: FormDa
         longitude: coordinates.coordinates?.longitude ?? null,
         phone: parsed.data.phone,
       },
+    });
+    // Every new facility starts a trial in the same transaction that
+    // creates it, so a clinic can never exist without a commercial state.
+    // A missing subscription row fails OPEN (see UNBILLED_ENTITLEMENTS),
+    // which is the right default but should never be relied on for a
+    // clinic we created ourselves.
+    await tx.subscription.create({
+      data: { clinicId: clinic.id, ...trialDefaults({ now: new Date() }) },
     });
     const doctor = await tx.doctor.create({
       data: {

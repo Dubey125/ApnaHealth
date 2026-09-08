@@ -20,6 +20,7 @@ const LINKS_BY_ROLE: Record<StaffRole, NavLink[]> = {
     { href: "/app/sessions", label: "Sessions" },
     { href: "/app/staff", label: "Staff" },
     { href: "/app/clinic", label: "Clinic profile" },
+    { href: "/app/billing", label: "Subscription" },
     { href: "/app/analytics", label: "Analytics" },
     { href: "/app/audit", label: "Audit log" },
   ],

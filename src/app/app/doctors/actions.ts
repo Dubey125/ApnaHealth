@@ -3,6 +3,8 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { loadClinicBilling } from "@/lib/billing/load";
+import { hasSeatAvailable } from "@/lib/billing/entitlements";
 import { parsePhotoUrl } from "@/lib/images";
 import { requireStaffSession } from "@/lib/auth/staff";
 import { slugify } from "@/lib/slugify";
@@ -59,6 +61,22 @@ export async function createDoctor(_prevState: CreateDoctorState, formData: Form
   const photo = parsePhotoUrl(formData.get("photoUrl"));
   if (!photo.ok) {
     return { error: photo.error };
+  }
+
+  // Seat limit. Checked here, on the way in, and never applied
+  // retroactively — a clinic that ends up over its allowance keeps every
+  // doctor its patients are already booked with (see seatOverage).
+  const billing = await loadClinicBilling(session.clinicId);
+  if (!billing.entitlements.canScheduleNewWork) {
+    return { error: "Your subscription is not active. Existing queues keep running; adding a doctor needs an active plan." };
+  }
+  if (billing.subscription) {
+    const doctorCount = await prisma.doctor.count({ where: { clinicId: session.clinicId } });
+    if (!hasSeatAvailable(doctorCount, billing.subscription.doctorSeats)) {
+      return {
+        error: `Your plan includes ${billing.subscription.doctorSeats} doctor seats and all are in use. Upgrade to add another doctor.`,
+      };
+    }
   }
 
   // Doctor.slug is globally unique (it's the public /doctors/[slug] path),

@@ -2,9 +2,11 @@
 
 import { z } from "zod";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdminSession, clearAdminSession } from "@/lib/auth/admin";
 import { verificationSchema, computeVerifiedAt } from "@/lib/verification";
+import { canTransition, fieldsForTransition } from "@/lib/billing/subscription";
 
 export interface AdminActionState {
   error?: string;
@@ -174,4 +176,87 @@ export async function recordDoctorVerification(
   ]);
 
   redirect(`/admin/doctors/${doctor.id}?reviewed=1`);
+}
+
+const subscriptionChangeSchema = z.object({
+  clinicId: z.string().min(1),
+  toStatus: z.enum(["ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"]),
+  plan: z.enum(["STARTER", "GROWTH"]).optional(),
+  reason: z.string().trim().min(3).max(200),
+});
+
+/**
+ * Move a clinic's subscription to a new state.
+ *
+ * With no payment provider wired up, this is how money entering a bank
+ * account becomes an entitlement in the product: a human at ApnaHealth
+ * records it. That is honest for the stage the business is at — a handful
+ * of clinics paying by transfer — and it is deliberately the SAME code
+ * path a provider webhook will call later, so the rules that matter get
+ * exercised from day one rather than written twice.
+ *
+ * Platform-admin only. A subscription is ApnaHealth's relationship with a
+ * clinic, so a clinic OWNER can view it but must never be able to mark
+ * their own account paid.
+ *
+ * Every change is refused if the state machine says it is impossible, and
+ * every accepted change writes an append-only SubscriptionEvent naming the
+ * admin who made it. A billing dispute is answered from that table.
+ */
+export async function changeSubscriptionStatus(
+  _prevState: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  const parsed = subscriptionChangeSchema.safeParse({
+    clinicId: formData.get("clinicId"),
+    toStatus: formData.get("toStatus"),
+    plan: formData.get("plan") || undefined,
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) {
+    return { error: "Choose a status and give a reason of at least 3 characters." };
+  }
+
+  const admin = await requireAdminSession();
+
+  const subscription = await prisma.subscription.findUnique({ where: { clinicId: parsed.data.clinicId } });
+  if (!subscription) {
+    return { error: "This clinic has no subscription record." };
+  }
+  if (!canTransition(subscription.status, parsed.data.toStatus)) {
+    return { error: `Cannot move a subscription from ${subscription.status} to ${parsed.data.toStatus}.` };
+  }
+
+  const now = new Date();
+  const fields = fieldsForTransition(parsed.data.toStatus, parsed.data.plan ?? subscription.plan, now);
+
+  await prisma.$transaction([
+    prisma.subscription.update({ where: { id: subscription.id }, data: fields }),
+    prisma.subscriptionEvent.create({
+      data: {
+        subscriptionId: subscription.id,
+        fromStatus: subscription.status,
+        toStatus: parsed.data.toStatus,
+        reason: parsed.data.reason,
+        actorAdminId: admin.adminId,
+        occurredAt: now,
+      },
+    }),
+    // AuditEvent is clinic-scoped and cannot record a platform action, so
+    // this also lands in AdminEvent — the same split the facility-approval
+    // flow already uses.
+    prisma.adminEvent.create({
+      data: {
+        adminId: admin.adminId,
+        action: "SUBSCRIPTION_STATUS_CHANGED",
+        entityType: "Subscription",
+        entityId: subscription.id,
+        occurredAt: now,
+        metadata: { clinicId: parsed.data.clinicId, from: subscription.status, to: parsed.data.toStatus },
+      },
+    }),
+  ]);
+
+  revalidatePath("/admin/subscriptions");
+  return {};
 }

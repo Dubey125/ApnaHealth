@@ -168,3 +168,16 @@ Rules:
   facility approval and doctor verification. It never reads clinical data.
 - QueueEvent is never updated/deleted.
 - AdminEvent is never updated/deleted.
+
+## Subscription
+id, clinicId (unique), plan TRIAL|STARTER|GROWTH, status TRIALING|ACTIVE|PAST_DUE|SUSPENDED|CANCELLED, doctorSeats, trialEndsAt?, currentPeriodStartAt?, currentPeriodEndAt?, gracePeriodEndsAt?, providerCustomerId?, providerSubscriptionId?, createdAt, updatedAt
+
+Holds **no card, bank or payment-instrument data**. See
+`docs/product/BILLING.md` — in particular the rule that a patient already
+holding a token can be seen in every subscription state.
+
+## SubscriptionEvent
+Append-only. id, subscriptionId, fromStatus?, toStatus, reason, actorAdminId?, occurredAt, metadata json.
+
+`actorAdminId` is null when the change was made by the clock (a trial
+lapsing, a grace period expiring) rather than by a person.

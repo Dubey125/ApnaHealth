@@ -4,6 +4,7 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { nanoid } from "nanoid";
 import { prisma } from "@/lib/db";
+import { loadEntitlements } from "@/lib/billing/load";
 import { allocateNextTokenNumber } from "@/lib/queue/tokenNumbering";
 import { getPatientSession } from "@/lib/auth/patient";
 import { bookableSessionWhere, isBookableSessionStatus } from "@/lib/publicListing";
@@ -42,6 +43,15 @@ export async function selfBookToken(_prevState: BookingState, formData: FormData
   }
   if (!isBookableSessionStatus(session.status)) {
     return { error: "This session is not currently accepting bookings." };
+  }
+
+  // Same rule as the counter: a token is a new promise to a patient, so a
+  // lapsed subscription stops it being made. Deliberately phrased without
+  // exposing the clinic's billing status to the public — a patient is not
+  // party to that relationship and does not need to know why.
+  const entitlements = await loadEntitlements(session.clinicId);
+  if (!entitlements.canIssueTokens) {
+    return { error: "This clinic isn't accepting online bookings right now. Please call the clinic directly." };
   }
 
   const patientSession = await getPatientSession();

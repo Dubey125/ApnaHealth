@@ -4,6 +4,7 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { nanoid } from "nanoid";
 import { prisma } from "@/lib/db";
+import { loadEntitlements } from "@/lib/billing/load";
 import { requireStaffSession, assertClinicAccess } from "@/lib/auth/staff";
 import { isValidSessionTransition, sessionTransitionEventType } from "@/lib/queue/sessionTransitions";
 import { loadSessionForStaff } from "@/lib/queue/staffSessionAccess";
@@ -73,6 +74,13 @@ export async function createSession(_prevState: SessionFormState, formData: Form
   }
 
   const now = new Date();
+  // New scheduled work stops when a subscription lapses. Running the
+  // sessions that already exist never does.
+  const entitlements = await loadEntitlements(session.clinicId);
+  if (!entitlements.canScheduleNewWork) {
+    return { error: "Your subscription is not active. Sessions already scheduled continue to run; creating a new one needs an active plan." };
+  }
+
   const created = await prisma.session.create({
     data: {
       clinicId: session.clinicId,
