@@ -4,7 +4,19 @@
    inline maps them to Tailwind's --color-* convention (same mechanism the
    original --background/--foreground pair already used) so they're usable
    as bg-primary, text-muted, border-border, etc. */
+/* Three theme states, not two.
+   
+   "light" and "dark" are explicit choices stamped on <html> by the user;
+   the absence of data-theme means "follow the system", which is the
+   default and what a first-time visitor gets. So each palette is declared
+   twice: once for the system-preference case and once for the explicit
+   choice, guarded so an explicit "light" is never overridden by a dark OS.
+   
+   color-scheme is set alongside every palette. Without it the browser
+   keeps painting native scrollbars, date pickers and autofill in the OS
+   theme, which is how a dark page ends up with a white date picker. */
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #0f172a;
   --primary: #0f766e;
@@ -34,8 +46,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* The dark palette, defined once and applied in two situations. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  /* System says dark — unless the visitor explicitly chose light. */
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --background: #090d16;
     --foreground: #f1f5f9;
     --primary: #2dd4bf;
@@ -48,6 +63,23 @@
     --danger: #f87171;
     --info: #60a5fa;
   }
+}
+
+/* The visitor explicitly chose dark, whatever the OS says. Declared after
+   the media query so the toggle wins in both directions. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #090d16;
+  --foreground: #f1f5f9;
+  --primary: #2dd4bf;
+  --primary-foreground: #042f2e;
+  --surface: #0f172a;
+  --border: #1e293b;
+  --muted: #94a3b8;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #60a5fa;
 }
 
 body {

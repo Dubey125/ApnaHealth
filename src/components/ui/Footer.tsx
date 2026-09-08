@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface FooterLink {
   href: string;
@@ -73,9 +74,16 @@ export function Footer() {
           ))}
         </div>
 
-        <p className="border-t border-border pt-6 text-xs text-muted">
-          © {year} ApnaHealth. A coordination and record-keeping tool — clinical decisions remain with your doctor.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6">
+          <p className="max-w-xl text-xs text-muted">
+            © {year} ApnaHealth. A coordination and record-keeping tool — clinical decisions remain with your doctor.
+          </p>
+          {/* The footer rather than the header: a theme control is a
+              once-a-year setting, and putting it in the header would make
+              it compete with navigation on a phone, where the header has
+              the least room and the most important links. */}
+          <ThemeToggle />
+        </div>
       </div>
     </footer>
   );

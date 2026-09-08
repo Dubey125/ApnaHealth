@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { StaffRole } from "@/generated/prisma/enums";
@@ -203,6 +204,9 @@ export function AppSidebar({
       <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
         <Identity clinicName={clinicName} role={role} />
         <NavList sections={sections} activeHref={activeHref} />
+        <div className="border-t border-border p-3">
+          <ThemeToggle />
+        </div>
         <SignOut />
       </aside>
 
@@ -244,6 +248,9 @@ export function AppSidebar({
               </button>
             </div>
             <NavList sections={sections} activeHref={activeHref} onNavigate={() => setOpen(false)} />
+            <div className="border-t border-border p-3">
+              <ThemeToggle />
+            </div>
             <SignOut />
           </div>
         </div>

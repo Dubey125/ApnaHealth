@@ -87,6 +87,32 @@ export async function patientCookie(): Promise<string> {
   return `patient_session=${await signSession({ patientId: patient.id }, "1h")}`;
 }
 
+/**
+ * A signed session cookie for a real staff user of the given role.
+ *
+ * Minted the same way patientCookie is, and for the same reason: the login
+ * is a Server Action whose wire format a test has no business depending
+ * on. Uses the app's own signSession, so a broken SESSION_SECRET or a
+ * changed payload shape still fails here.
+ *
+ * Lets role boundaries be tested at the HTTP level — which is where they
+ * actually have to hold, since a page's own requireStaffSession is the
+ * boundary and proxy.ts is only defence in depth.
+ */
+export async function staffCookie(role: "OWNER" | "FRONT_DESK" | "DOCTOR"): Promise<string> {
+  const staff = await prisma.staffUser.findFirst({
+    where: { role, isActive: true },
+    select: { id: true, clinicId: true, role: true, doctorId: true },
+  });
+  if (!staff) {
+    throw new Error(`No seeded ${role} staff user. Run: npx prisma db seed`);
+  }
+  return `staff_session=${await signSession(
+    { staffUserId: staff.id, clinicId: staff.clinicId, role: staff.role, doctorId: staff.doctorId },
+    "1h",
+  )}`;
+}
+
 /** How many result cards a discovery page rendered. */
 export function countResultCards(html: string): number {
   return (html.match(/<h3 class="font-semibold text-foreground">/g) ?? []).length;

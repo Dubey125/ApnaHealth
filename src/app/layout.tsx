@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/ui/Toast";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { ThemeScript } from "@/components/ui/ThemeScript";
 import { organizationSchema, websiteSchema } from "@/lib/seo/structuredData";
 import { getSiteUrl } from "@/lib/env";
 import "./globals.css";
@@ -45,7 +46,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // ThemeScript sets data-theme on this element before React hydrates,
+      // so the server HTML and the client's first read deliberately differ.
+      // Without this, React logs a hydration mismatch for a difference that
+      // is the entire point of the script.
+      suppressHydrationWarning
     >
+      <head>
+        {/* Before the first paint, or the visitor gets a flash of the
+            theme they explicitly chose to avoid. */}
+        <ThemeScript />
+      </head>
       <body className="min-h-full flex flex-col">
         {/* Site-level identity and the search box a crawler can offer.
             Page-level Physician/MedicalClinic markup is emitted by the
