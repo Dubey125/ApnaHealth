@@ -22,6 +22,15 @@ export interface PrescriptionData {
   clinicalAssessment?: string | null;
   diagnosisText?: string | null;
   prescriptionText?: string | null;
+  /**
+   * Structured medicines, when the record has them.
+   *
+   * Records written before medicines were structured have only
+   * prescriptionText, and that is printed as written — parsing a
+   * clinician's prescription prose back into drugs and doses would mean
+   * guessing at a prescription.
+   */
+  medicines?: { id: string; name: string; dosage: string | null; timing: string | null; duration: string | null; notes: string | null }[];
   followUpInstructions?: string | null;
 }
 
@@ -109,9 +118,42 @@ export function PrescriptionPrintView({ data }: { data: PrescriptionData }) {
         </div>
         
         <div className="bg-white border border-gray-300 rounded p-4 mb-6 min-h-[140px]">
-          <p className="whitespace-pre-wrap text-sm text-gray-900 leading-relaxed font-mono">
-            {data.prescriptionText || "No medicines prescribed."}
-          </p>
+          {data.medicines && data.medicines.length > 0 ? (
+            /* A real table, which is the point of storing medicines as
+               rows: a patient reading this at home needs to find one drug
+               and its instructions, not parse a paragraph. */
+            <table className="w-full border-collapse text-sm text-gray-900">
+              <thead>
+                <tr className="border-b border-gray-300 text-left text-[10px] uppercase tracking-wider text-gray-600">
+                  <th className="py-1 pr-2 font-semibold">#</th>
+                  <th className="py-1 pr-3 font-semibold">Medicine</th>
+                  <th className="py-1 pr-3 font-semibold">Dose</th>
+                  <th className="py-1 pr-3 font-semibold">When</th>
+                  <th className="py-1 font-semibold">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.medicines.map((medicine, index) => (
+                  <tr key={medicine.id} className="border-b border-gray-200 align-top last:border-0">
+                    <td className="py-1.5 pr-2 tabular-nums text-gray-600">{index + 1}</td>
+                    <td className="py-1.5 pr-3 font-semibold">
+                      {medicine.name}
+                      {medicine.notes && <span className="block text-xs font-normal text-gray-600">{medicine.notes}</span>}
+                    </td>
+                    {/* An unrecorded part prints blank, never as a dash: a
+                        printed "—" reads as an instruction. */}
+                    <td className="py-1.5 pr-3">{medicine.dosage ?? ""}</td>
+                    <td className="py-1.5 pr-3">{medicine.timing ?? ""}</td>
+                    <td className="py-1.5">{medicine.duration ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="whitespace-pre-wrap text-sm text-gray-900 leading-relaxed font-mono">
+              {data.prescriptionText || "No medicines prescribed."}
+            </p>
+          )}
         </div>
       </div>
 

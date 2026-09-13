@@ -567,8 +567,51 @@ model ConsultationRecord {
   createdAt            DateTime @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @db.Timestamptz(3)
 
+  medicines PrescribedMedicine[]
+
   @@index([patientId, consultedAt])
   @@index([doctorId, consultedAt])
+}
+
+// One medicine on a prescription.
+//
+// The form always built these rows — name, dose, timing, duration, note —
+// and then flattened them into prescriptionText before saving, exactly as
+// vitals were flattened into clinicalAssessment. The structure existed for
+// the length of one submission and was destroyed on the way to the
+// database, so nothing could count how often a drug is prescribed, repeat
+// a prescription at follow-up, or lay one out on a printed sheet.
+//
+// Only `name` is required. A prescriber who has written a drug but not yet
+// a duration must still be able to save it; refusing would push them back
+// into free text, which is the format this replaces.
+//
+// ConsultationRecord.prescriptionText is kept for records written before
+// this existed. Those are deliberately NOT parsed into rows — splitting a
+// clinician's prescription prose back into drugs and doses means guessing
+// at a prescription, and a wrong guess is a wrong drug in a medical record.
+//
+// Nothing in the product checks a medicine against anything: not the
+// patient's allergies, not other medicines, not a dose range. Allergies
+// and medicines are both structured now and sit on the same screen, and
+// comparing them is clinical decision support that needs its own approval
+// rather than being quietly enabled because the data lines up.
+model PrescribedMedicine {
+  id                   String             @id @default(cuid())
+  consultationRecordId String
+  consultationRecord   ConsultationRecord @relation(fields: [consultationRecordId], references: [id], onDelete: Cascade)
+
+  // Order is part of a prescription — the primary drug is written first.
+  position Int
+  name     String
+  dosage   String?
+  timing   String?
+  duration String?
+  notes    String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([consultationRecordId, position])
 }
 
 model RecordConsent {

@@ -126,6 +126,35 @@ Nothing in the product interprets these values. The stored bounds reject
 impossible data (a pulse of 1200 is a typo); judging a real reading is the
 clinician's decision, per the product safety boundary.
 
+## PrescribedMedicine
+id, consultationRecordId, position, name, dosage?, timing?, duration?, notes?, createdAt
+
+One medicine on a prescription. The form always built these rows and then
+flattened them into `ConsultationRecord.prescriptionText` before saving —
+the same mistake vitals made — so nothing could count how often a drug was
+prescribed, repeat a prescription at follow-up, or lay one out on a printed
+sheet.
+
+Only `name` is required. A prescriber who has written a drug but not yet a
+duration must still be able to save it; refusing would push them back into
+free text, which is the format this replaces.
+
+`position` is stored because order is part of a prescription — the primary
+drug is written first.
+
+`prescriptionText` is **kept, not dropped**: records written before this
+have their prescription there, and those are deliberately not parsed into
+rows. Splitting a clinician's prescription prose back into drugs and doses
+means guessing at a prescription, and a wrong guess is a wrong drug in a
+medical record. Such records display and print as written.
+
+Nothing in the product checks a medicine against anything — not the
+patient's allergies, not other medicines, not a dose range. Allergies and
+medicines are both structured now and sit on the same screen; comparing
+them is clinical decision support and needs its own approval rather than
+being quietly enabled because the data lines up. See
+`src/lib/records/prescription.ts`.
+
 ## PatientAllergy
 id, patientId, clinicId, doctorId?, substance, reaction?, severity UNKNOWN|MILD|MODERATE|SEVERE, recordedAt, retractedAt?, retractedReason?, retractedByDoctorId?, createdAt, updatedAt
 

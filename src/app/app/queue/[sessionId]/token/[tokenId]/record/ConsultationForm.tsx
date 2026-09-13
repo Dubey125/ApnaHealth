@@ -78,11 +78,28 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
     });
   };
 
-  // Compile formatted prescription text before submitting
-  const formattedPrescriptionText = medicines
-    .filter((m) => m.name.trim().length > 0)
-    .map((m, idx) => `${idx + 1}. ${m.name.trim()} | Dose: ${m.dosage} | Timing: ${m.timing} | Duration: ${m.duration}${m.notes ? ` | Note: ${m.notes}` : ""}`)
-    .join("\n");
+  // The rows used to be flattened here into one string:
+  //
+  //   1. Amoxicillin | Dose: 1-0-1 | Timing: After Food | Duration: 5 days
+  //
+  // which meant the structure existed for the length of one submission
+  // and was destroyed on the way to the database. They now post as JSON
+  // and become PrescribedMedicine rows (src/lib/records/prescription.ts),
+  // so a prescription can be counted, repeated and printed properly.
+  //
+  // Empty rows are dropped here as well as on the server — the form
+  // starts with one and a prescriber may leave a trailing blank.
+  const medicinesPayload = JSON.stringify(
+    medicines
+      .filter((m) => m.name.trim().length > 0)
+      .map((m) => ({
+        name: m.name.trim(),
+        dosage: m.dosage.trim(),
+        timing: m.timing.trim(),
+        duration: m.duration.trim(),
+        notes: m.notes.trim(),
+      })),
+  );
 
   // Vitals used to be flattened into the assessment text here, as
   // "[Vitals: BP: 130/85 mmHg - Pulse: 78 bpm]". That recorded the
@@ -98,7 +115,7 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
     <form action={formAction} className="flex flex-col gap-6 rounded-2xl border border-border bg-surface p-6 shadow-sm">
       <input type="hidden" name="sessionId" value={sessionId} />
       <input type="hidden" name="tokenId" value={tokenId} />
-      <input type="hidden" name="prescriptionText" value={formattedPrescriptionText} />
+      <input type="hidden" name="medicines" value={medicinesPayload} />
       <input type="hidden" name="clinicalAssessment" value={clinicalAssessment} />
       <input type="hidden" name="chiefComplaint" value={chiefComplaint} />
       <input type="hidden" name="diagnosisText" value={diagnosisText} />

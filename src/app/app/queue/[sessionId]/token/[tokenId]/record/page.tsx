@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { VitalsPanel } from "@/components/records/VitalsPanel";
 import { AllergyPanel } from "@/components/records/AllergyPanel";
+import { displayMedicine } from "@/lib/records/prescription";
 import { EMPTY_VITALS, trendPointsFrom } from "@/lib/records/vitals";
 import { VisitTypeCorrection } from "./VisitTypeCorrection";
 import { Badge } from "@/components/ui/Badge";
@@ -89,7 +90,10 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
   const patient = await prisma.patient.findUniqueOrThrow({ where: { id: token.patientId } });
 
   const [existingRecord, history, allergies] = await Promise.all([
-    prisma.consultationRecord.findFirst({ where: { tokenId: token.id } }),
+    prisma.consultationRecord.findFirst({
+      where: { tokenId: token.id },
+      include: { medicines: { orderBy: { position: "asc" } } },
+    }),
     prisma.consultationRecord.findMany({
       where: { patientId: patient.id, doctorId: session.doctorId, NOT: { tokenId: token.id } },
       orderBy: { consultedAt: "desc" },
@@ -152,6 +156,7 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
             clinicalAssessment: existingRecord.clinicalAssessment,
             diagnosisText: existingRecord.diagnosisText,
             prescriptionText: existingRecord.prescriptionText,
+            medicines: existingRecord.medicines,
             followUpInstructions: existingRecord.followUpInstructions,
           }}
         />
@@ -251,15 +256,35 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
               <Field label="Clinical Assessment" value={existingRecord.clinicalAssessment} />
             )}
             {existingRecord.diagnosisText && <Field label="Diagnosis" value={existingRecord.diagnosisText} />}
-            {existingRecord.prescriptionText && (
+            {(existingRecord.medicines.length > 0 || existingRecord.prescriptionText) && (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-1.5">
                   <span className="text-base font-serif font-bold text-primary italic">℞</span>
                   <span className="text-xs font-bold uppercase tracking-wider text-muted">Prescribed Medicines</span>
                 </div>
-                <div className="whitespace-pre-wrap font-mono text-xs bg-background p-3.5 rounded-lg border border-border text-foreground leading-relaxed">
-                  {existingRecord.prescriptionText}
-                </div>
+                {existingRecord.medicines.length > 0 ? (
+                  <ol className="flex flex-col gap-1.5 rounded-lg border border-border bg-background p-3.5">
+                    {existingRecord.medicines.map((medicine, index) => {
+                      const display = displayMedicine(medicine);
+                      return (
+                        <li key={medicine.id} className="flex flex-wrap items-baseline gap-2 text-xs">
+                          <span className="tabular-nums text-muted">{index + 1}.</span>
+                          <span className="font-semibold text-foreground">{display.name}</span>
+                          {display.instructions && <span className="text-foreground">{display.instructions}</span>}
+                          {display.notes && <span className="text-muted">— {display.notes}</span>}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  /* Written before medicines were structured. Shown exactly
+                     as the clinician wrote it — parsing prescription prose
+                     back into drugs and doses means guessing at a
+                     prescription. */
+                  <div className="whitespace-pre-wrap font-mono text-xs bg-background p-3.5 rounded-lg border border-border text-foreground leading-relaxed">
+                    {existingRecord.prescriptionText}
+                  </div>
+                )}
               </div>
             )}
             {existingRecord.followUpInstructions && (

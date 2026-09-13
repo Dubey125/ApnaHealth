@@ -7,6 +7,7 @@ import { loadTokenForDoctorRecord } from "@/lib/records/loadTokenForDoctorRecord
 import { emptyToUndefined } from "@/lib/records/access";
 import { hasAnyVital, toStoredVitals, vitalsSchema } from "@/lib/records/vitals";
 import { allergyInputSchema, isDuplicateSubstance } from "@/lib/records/allergies";
+import { parseMedicines, withPositions } from "@/lib/records/prescription";
 
 export interface RecordActionState {
   error?: string;
@@ -60,6 +61,14 @@ export async function createConsultationRecord(
   }
   const vitals = toStoredVitals(parsedVitals.data);
 
+  // Medicine rows travel as JSON in a hidden field, so they are untrusted
+  // browser input like anything else — parsed, schema-validated and
+  // bounded before they go near the database.
+  const medicines = parseMedicines(formData.get("medicines"));
+  if (!medicines.ok) {
+    return { error: medicines.error };
+  }
+
   const { session, clinicSession, token } = await loadTokenForDoctorRecord(parsed.data.sessionId, parsed.data.tokenId);
   if (!token.patientId) {
     return { error: "This visit has no linked patient account." };
@@ -85,14 +94,18 @@ export async function createConsultationRecord(
     // A visit where only observations were taken is a real record. Before
     // vitals were structured they counted as content only because they had
     // been pasted into the assessment text.
-    hasAnyVital(vitals);
+    hasAnyVital(vitals) ||
+    // A consultation whose only output was a prescription is a real
+    // record. Before medicines were structured this counted as content
+    // only because the rows had been stringified into prescriptionText.
+    medicines.medicines.length > 0;
   if (!hasContent) {
     return { error: "Record at least one detail before saving — this cannot be edited afterwards." };
   }
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    await tx.consultationRecord.create({
+    const record = await tx.consultationRecord.create({
       data: {
         patientId,
         doctorId: session.doctorId,
@@ -107,6 +120,20 @@ export async function createConsultationRecord(
         followUpInstructions: emptyToUndefined(parsed.data.followUpInstructions),
       },
     });
+
+    if (medicines.medicines.length > 0) {
+      await tx.prescribedMedicine.createMany({
+        data: withPositions(medicines.medicines).map((medicine) => ({
+          consultationRecordId: record.id,
+          position: medicine.position,
+          name: medicine.name,
+          dosage: medicine.dosage,
+          timing: medicine.timing,
+          duration: medicine.duration,
+          notes: medicine.notes,
+        })),
+      });
+    }
 
     // Visit-scoped implicit consent: attending a booked consultation with
     // this doctor authorizes them to record it. A doctor's access to a
