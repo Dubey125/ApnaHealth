@@ -58,6 +58,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: absoluteUrl("/doctors"), lastModified: now, changeFrequency: "daily", priority: 0.9 },
     { url: absoluteUrl("/clinics"), lastModified: now, changeFrequency: "daily", priority: 0.9 },
     { url: absoluteUrl("/hospitals"), lastModified: now, changeFrequency: "daily", priority: 0.9 },
+    // Razorpay's merchant terms require a published, reachable refund
+    // policy, and a terms page nobody can find is not much of an agreement.
+    { url: absoluteUrl("/terms"), lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: absoluteUrl("/refunds"), lastModified: now, changeFrequency: "yearly", priority: 0.3 },
   ];
 
   return [

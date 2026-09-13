@@ -1,7 +1,8 @@
 import { requireStaffSession } from "@/lib/auth/staff";
 import { prisma } from "@/lib/db";
 import { loadClinicBilling } from "@/lib/billing/load";
-import { PLAN_SEATS, daysRemaining } from "@/lib/billing/subscription";
+import { PLAN_PRICE_MINOR, PLAN_SEATS, TRIAL_DAYS, daysRemaining, formatPriceMinor } from "@/lib/billing/subscription";
+import { SubscribeButton, CancelSubscriptionButton } from "@/components/billing/SubscribeButton";
 import { seatOverage } from "@/lib/billing/entitlements";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -103,6 +104,45 @@ export default async function BillingPage() {
             {subscription.currentPeriodEndAt && (
               <Row label="Current period ends" value={formatClinicDate(subscription.currentPeriodEndAt)} />
             )}
+          </Card>
+
+          {/* Pay, or stop paying. The price is read from the same constant
+              the charge uses, so the number shown can never drift from the
+              number taken. */}
+          <Card className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-base font-semibold text-foreground">
+                {formatPriceMinor(PLAN_PRICE_MINOR.STARTER ?? 0)}
+                <span className="text-sm font-normal text-muted"> per month</span>
+              </h2>
+              <span className="text-xs text-muted">{PLAN_SEATS.STARTER} doctor seats included</span>
+            </div>
+
+            {subscription.status === "ACTIVE" ? (
+              <>
+                <p className="text-sm text-muted">Your subscription is active. Thank you.</p>
+                <CancelSubscriptionButton />
+              </>
+            ) : subscription.status === "CANCELLED" ? (
+              <>
+                <p className="text-sm text-muted">Reactivate whenever you are ready — nothing has been deleted.</p>
+                <SubscribeButton priceLabel={formatPriceMinor(PLAN_PRICE_MINOR.STARTER ?? 0)} trialDays={TRIAL_DAYS} />
+              </>
+            ) : (
+              <SubscribeButton priceLabel={formatPriceMinor(PLAN_PRICE_MINOR.STARTER ?? 0)} trialDays={TRIAL_DAYS} />
+            )}
+
+            <p className="text-xs text-muted">
+              By subscribing you agree to our{" "}
+              <a href="/terms" className="underline underline-offset-2">
+                terms of service
+              </a>{" "}
+              and{" "}
+              <a href="/refunds" className="underline underline-offset-2">
+                refund policy
+              </a>
+              .
+            </p>
           </Card>
 
           {/* Stated plainly, because the guarantee is only worth something

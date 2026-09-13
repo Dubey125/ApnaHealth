@@ -1,0 +1,26 @@
+# Normalise line endings in the repository.
+#
+# Without this, every commit from a Windows checkout rewrites whole files
+# as CRLF and git warns on each one — which buries real changes in a diff
+# and makes "what actually changed" impossible to review.
+#
+# text=auto: git decides what is text and stores it with LF in the repo.
+# eol=lf: check it out as LF everywhere, including Windows. Safe here
+# because every tool in this stack (node, next, prisma, eslint) is
+# indifferent to line endings, and it keeps the repo byte-identical across
+# machines.
+* text=auto eol=lf
+
+# Never touch these — a CRLF rewrite corrupts them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Generated, and noisy in review.
+package-lock.json linguist-generated=true diff=json
+src/generated/** linguist-generated=true

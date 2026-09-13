@@ -14,6 +14,25 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
+    // The leading-underscore convention, made real.
+    //
+    // Server actions used with useActionState must accept (prevState,
+    // formData) whether or not they read them, and this codebase already
+    // marks the unused ones with a leading underscore. Without this the
+    // rule only happened to stay quiet when a LATER argument was used
+    // ("args: after-used"), so an action that used neither suddenly warned
+    // for following the same convention as every action around it.
+    //
+    // This configures the convention rather than disabling the rule:
+    // an unused argument with no underscore is still an error.
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+    },
+  },
+  {
     // Plain-CommonJS operator scripts. These are run directly by node
     // (never bundled, never imported by the app), so require() is the
     // correct call there and the TypeScript-oriented rule that forbids it

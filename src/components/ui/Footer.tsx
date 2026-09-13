@@ -43,6 +43,13 @@ const COLUMNS: FooterColumn[] = [
       { href: "/login", label: "Clinic / staff login" },
     ],
   },
+  {
+    heading: "Legal",
+    links: [
+      { href: "/terms", label: "Terms of service" },
+      { href: "/refunds", label: "Refund policy" },
+    ],
+  },
 ];
 
 export function Footer() {
@@ -51,7 +58,7 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-surface">
       <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-12 sm:px-6">
-        <div className="grid gap-8 sm:grid-cols-[1.3fr_1fr_1fr_1fr]">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]">
           <div className="flex flex-col gap-2">
             <span className="text-base font-semibold tracking-tight text-foreground">ApnaHealth</span>
             <p className="max-w-xs text-sm text-muted">

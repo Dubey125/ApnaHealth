@@ -9,7 +9,14 @@ import type { SubscriptionPlan, SubscriptionStatus } from "@/generated/prisma/en
 // transitions an admin already uses. That keeps the rules that matter
 // (who is entitled to what, and when) testable without a network.
 
-export const TRIAL_DAYS = 14;
+/**
+ * Free trial length.
+ *
+ * Seven days, not thirty: an OPD clinic runs a full week of sessions in
+ * that time, which is enough to know whether the queue works for them.
+ * A longer trial mostly delays the decision rather than informing it.
+ */
+export const TRIAL_DAYS = 7;
 
 /**
  * How long a failed payment is tolerated before the account degrades.
@@ -26,6 +33,27 @@ export const PLAN_SEATS: Record<SubscriptionPlan, number> = {
   STARTER: 3,
   GROWTH: 10,
 };
+
+/**
+ * Monthly price per plan, in paise.
+ *
+ * Paise because Razorpay works only in the minor unit, and because money
+ * in a float is a bug waiting to happen. GROWTH is unpriced for now —
+ * there is one live price (₹499) and inventing a second before anyone has
+ * paid the first would be guessing.
+ */
+export const PLAN_PRICE_MINOR: Record<SubscriptionPlan, number | null> = {
+  TRIAL: 0,
+  STARTER: 49_900,
+  GROWTH: null,
+};
+
+/** ₹499 — formatted for display, from the same source as the charge. */
+export function formatPriceMinor(minor: number): string {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(
+    minor / 100,
+  );
+}
 
 /**
  * Which status transitions are legal.

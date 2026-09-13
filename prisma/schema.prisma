@@ -622,6 +622,24 @@ model SubscriptionEvent {
   @@index([subscriptionId, occurredAt])
 }
 
+// Webhook deliveries we have already acted on.
+//
+// Razorpay retries a webhook until it gets a 2xx, and will happily deliver
+// the same event twice even after success. Without this table a retried
+// `subscription.charged` would extend a billing period a second time, and
+// a replayed `subscription.cancelled` could cancel a clinic that had since
+// resubscribed. The event id is Razorpay's own and is unique per delivery.
+model ProcessedWebhookEvent {
+  id          String   @id @default(cuid())
+  provider    String
+  eventId     String
+  eventType   String
+  processedAt DateTime @db.Timestamptz(3)
+
+  @@unique([provider, eventId])
+  @@index([processedAt])
+}
+
 // The ApnaHealth review team: staff of the platform, not of any clinic.
 // Deliberately a separate table rather than a fourth StaffRole, because
 // StaffUser.clinicId is required and every staff query is scoped by it —

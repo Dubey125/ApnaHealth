@@ -4,8 +4,10 @@ name: CI
 # be green before a pilot: a regression in the public-listing boundary or a
 # soft-404 is not something to find in production.
 on:
+  # Every branch, not only main. Restricting push to [main] meant feature
+  # branches got no CI at all unless someone opened a pull request, so the
+  # gate that is supposed to run before merging only ran after it.
   push:
-    branches: [main]
   pull_request:
 
 concurrency:

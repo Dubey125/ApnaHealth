@@ -79,7 +79,100 @@ delisting a doctor would break bookings patients already hold.
 
 ---
 
-## No payment provider is connected
+## Razorpay
+
+Wired up, and **optional**. Unset the keys and everything still works —
+the state machine runs, and a platform admin records payments by hand at
+`/admin/subscriptions`. That is what development, CI and a manual pilot do.
+
+### Why the REST API and not the SDK
+
+The SDK wraps the same HTTP calls. The three things it would give us —
+Basic auth, JSON, an HMAC check — are a few lines each, and doing them
+directly means the payment path has no third-party code in it. No new
+dependency, so no `CLAUDE.md` approval needed beyond Razorpay itself.
+
+### Why Subscriptions and not Checkout
+
+A subscription returns a hosted `short_url` the owner is redirected to, so
+**no Razorpay JavaScript ever runs on our pages.** Checkout would need
+`checkout.razorpay.com` added to `script-src`, widening the exact hole the
+nonce-based CSP exists to close.
+
+### The money
+
+| | |
+|---|---|
+| Price | ₹499/month (`PLAN_PRICE_MINOR.STARTER` = 49900 paise) |
+| Trial | 7 days (`TRIAL_DAYS`), charged nothing |
+| Seats | 3 doctors on STARTER |
+
+The first charge is deferred with `start_at` to the end of the trial, so a
+clinic authorises the mandate today and is billed only when the free days
+run out. Without that, "7 days free" would be untrue.
+
+The price shown on `/terms` and `/app/billing` reads the same constant the
+charge uses. A clinic quoted one number and charged another is a dispute,
+so there is only one number.
+
+### The webhook is the source of truth
+
+`POST /api/webhooks/razorpay`. Nothing marks a clinic as paid except this
+endpoint — never a redirect back from a payment page, which is the classic
+way to give a product away for free.
+
+It is the only route in the product that changes commercial state without
+a session, so:
+
+- **The HMAC signature is the authentication.** Verified against the RAW
+  body before anything is read out of it, compared in constant time, and
+  failing closed on a malformed or wrong-length signature.
+- **It is idempotent.** Razorpay retries until it gets a 2xx and may
+  redeliver after success. The claim row is written in the SAME
+  transaction as the work — claiming first would mean a transient failure
+  left an event marked processed but never applied, silently losing a
+  payment.
+- **It fails closed.** An unknown event, an unmatched clinic, or a
+  transition the state machine forbids is acknowledged and ignored. Never
+  guessed at: guessing wrong strands a paying customer or gives the
+  product away.
+- **2xx on purpose.** A 500 makes Razorpay retry forever, so only a
+  signature failure is a 4xx.
+
+### Setting it up
+
+1. Create a **monthly plan at 49900 paise** in the Razorpay dashboard.
+2. Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_ID`.
+3. Create a webhook pointing at `https://<domain>/api/webhooks/razorpay`,
+   set a secret, and put it in `RAZORPAY_WEBHOOK_SECRET`. Subscribe to:
+   `subscription.activated`, `subscription.charged`, `subscription.pending`,
+   `subscription.halted`, `subscription.cancelled`, `subscription.completed`,
+   `subscription.resumed`.
+4. Use **TEST keys** everywhere but production. A live key in staging
+   charges real cards.
+
+`RAZORPAY_WEBHOOK_SECRET` is the only thing between the internet and an
+endpoint that marks accounts paid. Treat it like a password, and never
+reuse the API key secret for it.
+
+---
+
+## Terms and refunds
+
+`/terms` and `/refunds` are public and in the sitemap — Razorpay's merchant
+terms require a published, reachable refund policy.
+
+**Both are engineering drafts and have NOT been reviewed by a lawyer.**
+They are written to be honest and readable rather than impenetrable, but
+the clauses most likely to need changing are exactly the ones that matter:
+liability limits, the no-refund-once-paid rule, and data responsibilities
+under the DPDP Act. Indian consumer-protection law may override a blanket
+no-refund clause in some circumstances. Get them reviewed alongside the
+privacy review `PRIVACY_BOUNDARY.md` already requires.
+
+---
+
+## Manual billing (no provider)
 
 Deliberately. `CLAUDE.md` requires approval before a new dependency, and
 the state machine is worth having either way.
