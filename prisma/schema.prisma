@@ -459,6 +459,30 @@ model ConsultationRecord {
   tokenId              String?
   token                Token?   @relation(fields: [tokenId], references: [id], onDelete: SetNull)
   consultedAt          DateTime @db.Timestamptz(3)
+
+  // Vitals, as measurements rather than prose.
+  //
+  // The form always collected these; it flattened them into a string
+  // inside clinicalAssessment ("[Vitals: BP: 130/85 mmHg · ...]"), which
+  // captured the numbers and destroyed them as data in one motion. A
+  // doctor could not see a blood pressure climbing across four visits
+  // because the reading was buried in a paragraph.
+  //
+  // All nullable: real clinics do not measure everything at every visit,
+  // and an unrecorded vital is a different fact from any number — never
+  // defaulted to zero. Blood pressure is two columns but one measurement;
+  // both or neither, enforced in src/lib/records/vitals.ts.
+  //
+  // Nothing in the product judges these values. Bounds exist only to
+  // reject impossible data (a pulse of 1200 is a typo); interpreting a
+  // real reading is the clinician's job, per CLAUDE.md's safety boundary.
+  bloodPressureSystolic  Int?
+  bloodPressureDiastolic Int?
+  pulseBpm               Int?
+  temperatureF           Float?
+  spo2Percent            Int?
+  weightKg               Float?
+
   chiefComplaint       String?
   clinicalAssessment   String?
   diagnosisText        String?

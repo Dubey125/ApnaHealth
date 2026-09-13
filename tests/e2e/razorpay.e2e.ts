@@ -27,36 +27,58 @@ async function post(body: string, signature?: string): Promise<Response> {
   });
 }
 
-test("an unsigned request never changes anything", async () => {
-  // The forged request. Whatever the endpoint does with it, a clinic must
-  // not end up marked as paid.
-  const before = await prisma.subscription.findMany({ select: { id: true, status: true } });
+/**
+ * Whether the webhook acted on a delivery.
+ *
+ * Asserted instead of snapshotting every subscription row. The snapshot
+ * version failed spuriously whenever billing.e2e.ts flipped a status
+ * concurrently — it was testing "did anything anywhere change", which is
+ * not what this endpoint promises. A forged delivery is one the route
+ * never CLAIMS, so the absence of a ProcessedWebhookEvent is both the
+ * precise assertion and one no other test can disturb.
+ */
+async function wasProcessed(eventId: string): Promise<boolean> {
+  const claim = await prisma.processedWebhookEvent.findFirst({
+    where: { provider: "razorpay", eventId },
+  });
+  return claim !== null;
+}
 
+test("an unsigned request is never acted on", async () => {
+  const eventId = `e2e-unsigned-${Date.now()}`;
   const body = JSON.stringify({
     event: "subscription.charged",
-    payload: { subscription: { entity: { id: "sub_forged", notes: { clinicId: before[0]?.id ?? "any" } } } },
+    payload: { subscription: { entity: { id: "sub_forged", notes: { clinicId: "any" } } } },
   });
-  const response = await post(body);
+  const response = await fetch(`${BASE_URL}/api/webhooks/razorpay`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-razorpay-event-id": eventId },
+    body,
+  });
 
   // 401 when Razorpay is configured; 200-with-ignored when it is not,
   // because there is no secret to verify against and nothing is done
-  // either way. Both are safe; being marked paid is not.
+  // either way. Both are safe; being acted on is not.
   assert.ok([200, 401].includes(response.status), `unexpected status ${response.status}`);
-
-  const after = await prisma.subscription.findMany({ select: { id: true, status: true } });
-  assert.deepEqual(after, before, "an unsigned webhook must not change any subscription");
+  assert.equal(await wasProcessed(eventId), false, "an unsigned webhook must never be claimed");
 });
 
-test("a wrongly signed request never changes anything", async () => {
-  const before = await prisma.subscription.findMany({ select: { id: true, status: true } });
+test("a wrongly signed request is never acted on", async () => {
+  const eventId = `e2e-forged-${Date.now()}`;
   const body = JSON.stringify({ event: "subscription.charged" });
   const forged = createHmac("sha256", "not-the-real-secret").update(body).digest("hex");
 
-  const response = await post(body, forged);
+  const response = await fetch(`${BASE_URL}/api/webhooks/razorpay`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-razorpay-signature": forged,
+      "x-razorpay-event-id": eventId,
+    },
+    body,
+  });
   assert.ok([200, 401].includes(response.status));
-
-  const after = await prisma.subscription.findMany({ select: { id: true, status: true } });
-  assert.deepEqual(after, before, "a forged signature must not change any subscription");
+  assert.equal(await wasProcessed(eventId), false, "a forged signature must never be claimed");
 });
 
 test("the endpoint rejects a forged signature with 401 when configured", { skip: !configured }, async () => {

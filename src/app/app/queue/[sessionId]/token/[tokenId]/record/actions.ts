@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { loadTokenForDoctorRecord } from "@/lib/records/loadTokenForDoctorRecord";
 import { emptyToUndefined } from "@/lib/records/access";
+import { hasAnyVital, toStoredVitals, vitalsSchema } from "@/lib/records/vitals";
 
 export interface RecordActionState {
   error?: string;
@@ -41,6 +42,23 @@ export async function createConsultationRecord(
     return { error: "Invalid request." };
   }
 
+  // Vitals are parsed separately so their own validation messages survive.
+  // "Systolic must be higher than diastolic" tells a clinician what to fix;
+  // folding it into a generic "Invalid request." would not, and a form that
+  // refuses without saying why is a form people stop filling in.
+  const parsedVitals = vitalsSchema.safeParse({
+    bloodPressureSystolic: formData.get("bloodPressureSystolic"),
+    bloodPressureDiastolic: formData.get("bloodPressureDiastolic"),
+    pulseBpm: formData.get("pulseBpm"),
+    temperatureF: formData.get("temperatureF"),
+    spo2Percent: formData.get("spo2Percent"),
+    weightKg: formData.get("weightKg"),
+  });
+  if (!parsedVitals.success) {
+    return { error: parsedVitals.error.issues[0]?.message ?? "Check the recorded vitals." };
+  }
+  const vitals = toStoredVitals(parsedVitals.data);
+
   const { session, clinicSession, token } = await loadTokenForDoctorRecord(parsed.data.sessionId, parsed.data.tokenId);
   if (!token.patientId) {
     return { error: "This visit has no linked patient account." };
@@ -55,13 +73,18 @@ export async function createConsultationRecord(
   // Every field is individually optional, but a record with none of them
   // filled in is a permanent, uneditable, empty clinical entry (there is
   // no update capability in this MVP) — worse than no record at all.
-  const hasContent = [
-    parsed.data.chiefComplaint,
-    parsed.data.clinicalAssessment,
-    parsed.data.diagnosisText,
-    parsed.data.prescriptionText,
-    parsed.data.followUpInstructions,
-  ].some((value) => emptyToUndefined(value) !== undefined);
+  const hasContent =
+    [
+      parsed.data.chiefComplaint,
+      parsed.data.clinicalAssessment,
+      parsed.data.diagnosisText,
+      parsed.data.prescriptionText,
+      parsed.data.followUpInstructions,
+    ].some((value) => emptyToUndefined(value) !== undefined) ||
+    // A visit where only observations were taken is a real record. Before
+    // vitals were structured they counted as content only because they had
+    // been pasted into the assessment text.
+    hasAnyVital(vitals);
   if (!hasContent) {
     return { error: "Record at least one detail before saving — this cannot be edited afterwards." };
   }
@@ -75,6 +98,7 @@ export async function createConsultationRecord(
         clinicId: clinicSession.clinicId,
         tokenId: token.id,
         consultedAt: now,
+        ...vitals,
         chiefComplaint: emptyToUndefined(parsed.data.chiefComplaint),
         clinicalAssessment: emptyToUndefined(parsed.data.clinicalAssessment),
         diagnosisText: emptyToUndefined(parsed.data.diagnosisText),

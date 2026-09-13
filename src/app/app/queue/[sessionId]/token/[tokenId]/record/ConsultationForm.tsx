@@ -84,30 +84,22 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
     .map((m, idx) => `${idx + 1}. ${m.name.trim()} | Dose: ${m.dosage} | Timing: ${m.timing} | Duration: ${m.duration}${m.notes ? ` | Note: ${m.notes}` : ""}`)
     .join("\n");
 
-  // Compile vitals into clinical assessment string if recorded
-  const vitalsSummary = [
-    bpSystolic && bpDiastolic ? `BP: ${bpSystolic}/${bpDiastolic} mmHg` : null,
-    pulse ? `Pulse: ${pulse} bpm` : null,
-    temp ? `Temp: ${temp} °F` : null,
-    spo2 ? `SpO2: ${spo2}%` : null,
-    weight ? `Weight: ${weight} kg` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  const combinedAssessment = [
-    vitalsSummary ? `[Vitals: ${vitalsSummary}]` : null,
-    clinicalAssessment.trim() || null,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  // Vitals used to be flattened into the assessment text here, as
+  // "[Vitals: BP: 130/85 mmHg - Pulse: 78 bpm]". That recorded the
+  // numbers and destroyed them as data in the same motion: nothing could
+  // chart a blood pressure across visits, because the reading was inside
+  // a paragraph.
+  //
+  // They now post as named fields into their own columns (see
+  // src/lib/records/vitals.ts), and the assessment holds only what the
+  // clinician actually wrote.
 
   return (
     <form action={formAction} className="flex flex-col gap-6 rounded-2xl border border-border bg-surface p-6 shadow-sm">
       <input type="hidden" name="sessionId" value={sessionId} />
       <input type="hidden" name="tokenId" value={tokenId} />
       <input type="hidden" name="prescriptionText" value={formattedPrescriptionText} />
-      <input type="hidden" name="clinicalAssessment" value={combinedAssessment} />
+      <input type="hidden" name="clinicalAssessment" value={clinicalAssessment} />
       <input type="hidden" name="chiefComplaint" value={chiefComplaint} />
       <input type="hidden" name="diagnosisText" value={diagnosisText} />
       <input type="hidden" name="followUpInstructions" value={followUpInstructions} />
@@ -132,6 +124,9 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
               <Input
                 placeholder="120"
                 value={bpSystolic}
+                name="bloodPressureSystolic"
+                aria-label="Blood pressure, systolic"
+                inputMode="numeric"
                 onChange={(e) => setBpSystolic(e.target.value)}
                 className="h-9 px-2 text-xs"
               />
@@ -139,6 +134,9 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
               <Input
                 placeholder="80"
                 value={bpDiastolic}
+                name="bloodPressureDiastolic"
+                aria-label="Blood pressure, diastolic"
+                inputMode="numeric"
                 onChange={(e) => setBpDiastolic(e.target.value)}
                 className="h-9 px-2 text-xs"
               />
@@ -149,6 +147,9 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
             <Input
               placeholder="72"
               value={pulse}
+              name="pulseBpm"
+              aria-label="Pulse in beats per minute"
+              inputMode="numeric"
               onChange={(e) => setPulse(e.target.value)}
               className="h-9 px-2 text-xs"
             />
@@ -158,6 +159,9 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
             <Input
               placeholder="98.6"
               value={temp}
+              name="temperatureF"
+              aria-label="Temperature in Fahrenheit"
+              inputMode="decimal"
               onChange={(e) => setTemp(e.target.value)}
               className="h-9 px-2 text-xs"
             />
@@ -167,6 +171,9 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
             <Input
               placeholder="99"
               value={spo2}
+              name="spo2Percent"
+              aria-label="Oxygen saturation percentage"
+              inputMode="numeric"
               onChange={(e) => setSpo2(e.target.value)}
               className="h-9 px-2 text-xs"
             />
@@ -176,6 +183,9 @@ export function ConsultationForm({ sessionId, tokenId }: { sessionId: string; to
             <Input
               placeholder="68"
               value={weight}
+              name="weightKg"
+              aria-label="Weight in kilograms"
+              inputMode="decimal"
               onChange={(e) => setWeight(e.target.value)}
               className="h-9 px-2 text-xs"
             />

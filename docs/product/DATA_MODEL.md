@@ -104,7 +104,27 @@ unknown, and guessing would mix follow-ups into the NEW distribution.
 id, name, phone, email?, passwordHash, dateOfBirth?, sex?, createdAt, updatedAt
 
 ## ConsultationRecord
-id, patientId, doctorId, clinicId, tokenId?, consultedAt, chiefComplaint?, clinicalAssessment?, diagnosisText?, prescriptionText?, followUpInstructions?, createdAt, updatedAt
+id, patientId, doctorId, clinicId, tokenId?, consultedAt, bloodPressureSystolic?, bloodPressureDiastolic?, pulseBpm?, temperatureF?, spo2Percent?, weightKg?, chiefComplaint?, clinicalAssessment?, diagnosisText?, prescriptionText?, followUpInstructions?, createdAt, updatedAt
+
+Vitals are measurements, not prose. The form always collected them and used
+to flatten them into `clinicalAssessment` as
+`[Vitals: BP: 130/85 mmHg - Pulse: 78 bpm]`, which captured the numbers and
+destroyed them as data — nothing could chart a blood pressure across
+visits. Rules live in `src/lib/records/vitals.ts`.
+
+All nullable: clinics do not measure everything at every visit, and an
+unrecorded vital is a different fact from zero. Blood pressure is two
+columns but one measurement — both or neither, and systolic above
+diastolic.
+
+Records written before this change keep their vitals in free text and are
+deliberately **not** backfilled: parsing prose into structured medical
+measurements means guessing at clinical data, and a wrong guess is a wrong
+number in someone's medical record.
+
+Nothing in the product interprets these values. The stored bounds reject
+impossible data (a pulse of 1200 is a typo); judging a real reading is the
+clinician's decision, per the product safety boundary.
 
 ## RecordConsent
 id, patientId, doctorId, clinicId, tokenId?, grantedAt, revokedAt?, scope

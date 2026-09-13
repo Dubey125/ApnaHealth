@@ -6,6 +6,8 @@ import { PrintPrescriptionButton } from "./PrintPrescriptionButton";
 import { PrescriptionPrintView } from "@/components/records/PrescriptionPrintView";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import { VitalsPanel } from "@/components/records/VitalsPanel";
+import { EMPTY_VITALS, trendPointsFrom } from "@/lib/records/vitals";
 import { VisitTypeCorrection } from "./VisitTypeCorrection";
 import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
@@ -218,9 +220,15 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
               </div>
             </div>
 
+            <VitalsPanel current={existingRecord} history={trendPointsFrom(history)} />
+
             {existingRecord.chiefComplaint && <Field label="Chief Complaints" value={existingRecord.chiefComplaint} />}
             {existingRecord.clinicalAssessment && (
-              <Field label="Clinical Assessment & Vitals" value={existingRecord.clinicalAssessment} />
+              /* No longer "& Vitals": those are their own columns now, and
+                 a label promising them here would be wrong for every record
+                 written since. Records written BEFORE that change still
+                 carry their vitals in this text, deliberately unparsed. */
+              <Field label="Clinical Assessment" value={existingRecord.clinicalAssessment} />
             )}
             {existingRecord.diagnosisText && <Field label="Diagnosis" value={existingRecord.diagnosisText} />}
             {existingRecord.prescriptionText && (
@@ -243,7 +251,12 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
             </p>
           </Card>
         ) : (
-          <ConsultationForm sessionId={clinicSession.id} tokenId={token.id} />
+          <>
+            {/* Shown above the form, so previous readings are visible while
+                today's are being taken rather than after they are saved. */}
+            <VitalsPanel current={EMPTY_VITALS} history={trendPointsFrom(history)} />
+            <ConsultationForm sessionId={clinicSession.id} tokenId={token.id} />
+          </>
         )}
 
         {/* Previous Consultation History */}

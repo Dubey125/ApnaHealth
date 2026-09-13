@@ -203,35 +203,17 @@ test("facility pages are reachable and name their doctors", async () => {
   assert.ok(/href="\/doctors\/[a-z0-9-]+"/.test(page.body), "a facility should link to its doctors");
 });
 
-test("discovery pages show a map of the geocoded facilities on the page", async () => {
-  const page = await getPage("/clinics");
-  const geocoded = await prisma.clinic.count({
-    where: { isActive: true, approvalStatus: "APPROVED", latitude: { not: null }, longitude: { not: null } },
-  });
-  if (geocoded === 0) return;
 
-  assert.match(page.body, /aria-label="Map showing \d+ facilit/, "expected a labelled map");
-  assert.ok(/tile\.[a-z.]+\/\d+\/\d+\/\d+\.png/.test(page.body), "expected map tiles");
-  // Attribution is a licence condition of every open tile source.
-  assert.ok(page.body.includes("OpenStreetMap contributors"), "tiles must carry attribution");
-});
-
-test("map pins are real links, so the map works without JavaScript", async () => {
+test("a geocoded facility is reachable from the listing", async () => {
+  // Was "map pins are real links" until the map was removed (3a948af).
+  // The pin is gone; the thing it was really protecting — that a listed
+  // facility can actually be opened from the list — is not.
   const page = await getPage("/clinics");
   const clinic = await prisma.clinic.findFirst({
     where: { isActive: true, approvalStatus: "APPROVED", latitude: { not: null } },
     select: { slug: true },
   });
   if (!clinic) return;
-  assert.ok(
-    page.body.includes(`href="/facilities/${clinic.slug}"`),
-    "a pin should navigate to the facility it marks",
-  );
+  assert.ok(page.body.includes(`href="/facilities/${clinic.slug}"`), "a listed facility should be a link");
 });
 
-test("the map says when it is showing the viewer's own location", async () => {
-  const withLocation = await getPage("/doctors?lat=18.5372&lng=73.8949&radiusKm=5");
-  const without = await getPage("/doctors");
-  assert.match(withLocation.body, /aria-label="Map showing \d+ facilit[^"]*near your location"/);
-  assert.ok(!without.body.includes("near your location"), "no viewer pin without a location");
-});
