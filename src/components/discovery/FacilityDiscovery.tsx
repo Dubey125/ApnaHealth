@@ -12,7 +12,6 @@ import { DiscoverySearchForm } from "@/components/discovery/DiscoverySearchForm"
 import { FilterChipGroup } from "@/components/discovery/FilterChips";
 import { NoResults } from "@/components/discovery/NoResults";
 import { Pagination } from "@/components/discovery/Pagination";
-import { StaticMap, type MapMarker } from "@/components/discovery/StaticMap";
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
 import { formatDistanceKm } from "@/lib/geo/distance";
 import { resolveLocationAnchor } from "@/lib/geo/anchors";
@@ -159,22 +158,6 @@ export async function FacilityDiscovery({ facilityType, searchParams }: Facility
 
   const hasFilters = Boolean(filters.name || filters.specialty || filters.city) || hasAnyDiscoveryFilter(refineFilters);
 
-  const mapMarkers: MapMarker[] = results.flatMap(({ clinic }, index) =>
-    clinic.latitude === null || clinic.longitude === null
-      ? []
-      : [
-          {
-            key: clinic.id,
-            latitude: clinic.latitude,
-            longitude: clinic.longitude,
-            label: `${clinic.name}, ${clinic.city}`,
-            href: `/facilities/${clinic.slug}`,
-            // Numbered from the page's first result, not from 1 overall, so
-            // the badge matches what the reader is looking at.
-            badge: String(pageInfo.skip + index + 1),
-          },
-        ],
-  );
   const hasLocation = origin !== null;
 
   const preservedFilters: Record<string, string> = {};
@@ -276,8 +259,6 @@ export async function FacilityDiscovery({ facilityType, searchParams }: Facility
           {/* Only the geocoded facilities on THIS page get a pin, numbered
               to match the list beneath — a map showing results the reader
               cannot see below it is a puzzle, not a summary. */}
-          {mapMarkers.length > 0 && <StaticMap markers={mapMarkers} viewerOrigin={origin} />}
-
           {results.length === 0 ? (
             <NoResults
               basePath={copy.basePath}

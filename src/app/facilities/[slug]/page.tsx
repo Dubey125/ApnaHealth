@@ -11,7 +11,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { DiscoveryCard } from "@/components/discovery/DiscoveryCard";
-import { StaticMap } from "@/components/discovery/StaticMap";
 import {
   DistanceFromViewer,
   ShowDistancesButton,
@@ -199,20 +198,6 @@ export default async function FacilityProfilePage({ params }: FacilityPageProps)
               )}
             </div>
 
-            {clinic.latitude !== null && clinic.longitude !== null && (
-              <StaticMap
-                markers={[
-                  {
-                    key: clinic.id,
-                    latitude: clinic.latitude,
-                    longitude: clinic.longitude,
-                    label: clinic.name,
-                    href: mapsUrl,
-                  },
-                ]}
-                height={220}
-              />
-            )}
 
             <dl className="grid grid-cols-2 gap-4 border-t border-border pt-5 sm:grid-cols-4">
               <Fact label="Doctors" value={String(totalDoctors)} />

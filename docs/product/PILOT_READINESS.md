@@ -132,8 +132,6 @@ dependency.
   entry and social card would claim the site lives on localhost;
 - `RESEND_API_KEY` unset — `/forgot-password` refuses every request, so
   nobody can recover an account;
-- `MAP_TILE_URL` unset — maps use OpenStreetMap's tiles, whose usage policy
-  forbids production application use (`docs/product/MAP_TILES.md`).
 
 These warn rather than fail. An unset `SITE_URL` is an SEO problem, not a
 reason to take a clinic offline mid-session.
@@ -198,7 +196,7 @@ Every line must be true before a real patient's data is entered.
 - [ ] An uptime monitor pointed at `/healthz`
 - [ ] Edge rate limiting configured (`docs/product/RATE_LIMITING.md`), and
       confirmed not to throttle Googlebot on the discovery pages
-- [ ] `SITE_URL`, `RESEND_API_KEY`, `MAP_TILE_URL` set; boot warnings clear
+- [ ] `SITE_URL` and `RESEND_API_KEY` set; boot warnings clear
 - [ ] `SESSION_SECRET` freshly generated for production, never reused
 - [ ] Migrations applied with `migrate deploy` from a trusted machine
 - [ ] Pilot clinic's facility and doctors entered through the product

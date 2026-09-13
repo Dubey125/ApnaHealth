@@ -14,7 +14,6 @@ import { DiscoverySearchForm } from "@/components/discovery/DiscoverySearchForm"
 import { FilterChipGroup } from "@/components/discovery/FilterChips";
 import { NoResults } from "@/components/discovery/NoResults";
 import { Pagination } from "@/components/discovery/Pagination";
-import { StaticMap, type MapMarker } from "@/components/discovery/StaticMap";
 import { formatClinicDate, formatClinicTime, formatFeeMinor } from "@/lib/format";
 import { LISTED_CLINIC } from "@/lib/publicListing";
 import { formatDistanceKm } from "@/lib/geo/distance";
@@ -209,20 +208,6 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
     if (existing) existing.doctors += 1;
     else clinicsOnPage.set(doctor.clinicId, { clinic: doctor.clinic, doctors: 1 });
   }
-  const mapMarkers: MapMarker[] = [...clinicsOnPage.values()].flatMap(({ clinic, doctors: count }) =>
-    clinic.latitude === null || clinic.longitude === null
-      ? []
-      : [
-          {
-            key: clinic.id,
-            latitude: clinic.latitude,
-            longitude: clinic.longitude,
-            label: `${clinic.name} — ${count} ${count === 1 ? "doctor" : "doctors"} on this page`,
-            href: `/facilities/${clinic.slug}`,
-            badge: String(count),
-          },
-        ],
-  );
 
   const suggestions = anchors.slice(0, MAX_PLACE_SUGGESTIONS).map((anchor) => anchor.label);
 
@@ -337,8 +322,6 @@ export default async function DoctorsPage({ searchParams }: DoctorsPageProps) {
               </Link>
             )}
           </div>
-
-          {mapMarkers.length > 0 && <StaticMap markers={mapMarkers} viewerOrigin={origin} />}
 
           {doctors.length === 0 ? (
             <NoResults

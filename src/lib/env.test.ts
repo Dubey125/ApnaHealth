@@ -50,7 +50,6 @@ test("a correctly configured production environment produces no warnings", () =>
     NODE_ENV: "production",
     SITE_URL: "https://apnahealth.in",
     RESEND_API_KEY: "re_live_key",
-    MAP_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png",
   } as NodeJS.ProcessEnv);
   assert.deepEqual(warnings, []);
 });

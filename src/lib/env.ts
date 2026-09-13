@@ -105,16 +105,6 @@ export function productionConfigWarnings(env: NodeJS.ProcessEnv = process.env): 
     );
   }
 
-  // Documented in docs/product/MAP_TILES.md: OpenStreetMap's tile usage
-  // policy forbids heavy application use, so the default is a pilot-only
-  // setting.
-  const tiles = env.MAP_TILE_URL?.trim();
-  if (!tiles) {
-    warnings.push(
-      "MAP_TILE_URL is not set, so maps use tile.openstreetmap.org — whose usage policy forbids production application use. Set your own tile source, or MAP_TILE_URL=off.",
-    );
-  }
-
   return warnings;
 }
 
