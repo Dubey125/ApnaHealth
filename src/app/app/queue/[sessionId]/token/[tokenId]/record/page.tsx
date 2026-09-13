@@ -7,6 +7,7 @@ import { PrescriptionPrintView } from "@/components/records/PrescriptionPrintVie
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { VitalsPanel } from "@/components/records/VitalsPanel";
+import { AllergyPanel } from "@/components/records/AllergyPanel";
 import { EMPTY_VITALS, trendPointsFrom } from "@/lib/records/vitals";
 import { VisitTypeCorrection } from "./VisitTypeCorrection";
 import { Badge } from "@/components/ui/Badge";
@@ -87,12 +88,23 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
 
   const patient = await prisma.patient.findUniqueOrThrow({ where: { id: token.patientId } });
 
-  const [existingRecord, history] = await Promise.all([
+  const [existingRecord, history, allergies] = await Promise.all([
     prisma.consultationRecord.findFirst({ where: { tokenId: token.id } }),
     prisma.consultationRecord.findMany({
       where: { patientId: patient.id, doctorId: session.doctorId, NOT: { tokenId: token.id } },
       orderBy: { consultedAt: "desc" },
       take: 10,
+    }),
+    // Deliberately NOT scoped to this doctor, unlike the consultation
+    // history above. An allergy is a fact about the person, and a doctor
+    // seeing a patient for the first time must see one that somebody else
+    // recorded — a record only its author can read creates false
+    // confidence rather than safety. The treating-clinician gate
+    // (loadTokenForDoctorRecord) is what authorises this read, and the
+    // RecordAccessEvent written below logs it like any other.
+    prisma.patientAllergy.findMany({
+      where: { patientId: token.patientId },
+      orderBy: { recordedAt: "desc" },
     }),
   ]);
 
@@ -220,6 +232,14 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
               </div>
             </div>
 
+            <AllergyPanel
+              sessionId={clinicSession.id}
+              tokenId={token.id}
+              allergies={allergies}
+              reviewedAt={patient.allergiesReviewedAt}
+              readOnly
+            />
+
             <VitalsPanel current={existingRecord} history={trendPointsFrom(history)} />
 
             {existingRecord.chiefComplaint && <Field label="Chief Complaints" value={existingRecord.chiefComplaint} />}
@@ -254,6 +274,15 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
           <>
             {/* Shown above the form, so previous readings are visible while
                 today's are being taken rather than after they are saved. */}
+            {/* Above the form, because the moment it has to be visible is
+                while the prescription is being written — not after. */}
+            <AllergyPanel
+              sessionId={clinicSession.id}
+              tokenId={token.id}
+              allergies={allergies}
+              reviewedAt={patient.allergiesReviewedAt}
+            />
+
             <VitalsPanel current={EMPTY_VITALS} history={trendPointsFrom(history)} />
             <ConsultationForm sessionId={clinicSession.id} tokenId={token.id} />
           </>

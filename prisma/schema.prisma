@@ -105,6 +105,19 @@ enum QueueEventType {
   TOKEN_REORDERED
 }
 
+// How badly the patient reacts, AS RECORDED BY A CLINICIAN.
+//
+// Never inferred. The product does not know that penicillin is dangerous
+// and must not derive a severity from a substance name — UNKNOWN is a real
+// and common answer, and the default, because forcing a clinician to pick a
+// severity they have not established would manufacture certainty.
+enum AllergySeverity {
+  UNKNOWN
+  MILD
+  MODERATE
+  SEVERE
+}
+
 enum RecordAccessAction {
   VIEW
   CREATE
@@ -201,6 +214,7 @@ model Clinic {
   doctors             Doctor[]
   sessions            Session[]
   consultationRecords ConsultationRecord[]
+  patientAllergies    PatientAllergy[]
   recordConsents      RecordConsent[]
   recordAccessEvents  RecordAccessEvent[]
   auditEvents         AuditEvent[]
@@ -296,6 +310,9 @@ model Doctor {
 
   staffAccount        StaffUser?           @relation("StaffUserDoctorProfile")
   sessions            Session[]
+  recordedAllergies   PatientAllergy[]     @relation("PatientAllergyRecorder")
+  retractedAllergies  PatientAllergy[]     @relation("PatientAllergyRetractor")
+  reviewedAllergiesOf Patient[]            @relation("PatientAllergyReviewer")
   verifications       DoctorVerification[]
   consultationRecords ConsultationRecord[]
   recordConsents      RecordConsent[]
@@ -439,13 +456,72 @@ model Patient {
   passwordHash String
   dateOfBirth  DateTime? @db.Date
   sex          String?
+  // When a clinician last ASKED about allergies, regardless of what they
+  // found.
+  //
+  // This exists because "no known allergies" and "nobody has asked" look
+  // identical in an empty list and are completely different clinical
+  // facts. Without this column the product cannot tell them apart, and a
+  // blank allergy panel reads as "cleared" when it may mean nothing of the
+  // sort. See src/lib/records/allergies.ts.
+  allergiesReviewedAt         DateTime? @db.Timestamptz(3)
+  allergiesReviewedByDoctorId String?
+  allergiesReviewedByDoctor   Doctor?   @relation("PatientAllergyReviewer", fields: [allergiesReviewedByDoctorId], references: [id], onDelete: SetNull)
+
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
 
   tokens              Token[]
+  allergies           PatientAllergy[]
   consultationRecords ConsultationRecord[]
   recordConsents      RecordConsent[]
   recordAccessEvents  RecordAccessEvent[]
+}
+
+// A substance this patient reacts to.
+//
+// Attached to the Patient, not to a visit or a clinic: an allergy is a
+// fact about the person and does not stop being true when they walk into a
+// different building. That is deliberate and is the whole clinical value —
+// a doctor seeing a patient for the first time must see an allergy someone
+// else recorded, or the record creates false confidence rather than
+// safety. Access still goes through the treating-clinician gate in
+// src/lib/records/loadTokenForDoctorRecord.ts and is logged as a
+// RecordAccessEvent like any other record read.
+//
+// clinicId and doctorId record WHERE and BY WHOM it was captured, for
+// attribution — not to scope who may read it.
+//
+// Never hard-deleted. A withdrawn allergy is retracted with a reason and
+// stays in the record: "this was recorded and later withdrawn" is itself
+// clinically meaningful, and silently removing it would leave a doctor
+// wondering whether it was ever there.
+model PatientAllergy {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+  clinicId  String
+  clinic    Clinic  @relation(fields: [clinicId], references: [id])
+  doctorId  String?
+  doctor    Doctor? @relation("PatientAllergyRecorder", fields: [doctorId], references: [id], onDelete: SetNull)
+
+  substance String
+  reaction  String?
+  severity  AllergySeverity @default(UNKNOWN)
+
+  recordedAt DateTime @db.Timestamptz(3)
+
+  retractedAt         DateTime? @db.Timestamptz(3)
+  retractedReason     String?
+  retractedByDoctorId String?
+  retractedByDoctor   Doctor?   @relation("PatientAllergyRetractor", fields: [retractedByDoctorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  // The panel reads active allergies for one patient on every consultation
+  // screen, so that is the query the index serves.
+  @@index([patientId, retractedAt])
 }
 
 model ConsultationRecord {

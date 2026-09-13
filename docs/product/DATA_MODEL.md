@@ -126,6 +126,39 @@ Nothing in the product interprets these values. The stored bounds reject
 impossible data (a pulse of 1200 is a typo); judging a real reading is the
 clinician's decision, per the product safety boundary.
 
+## PatientAllergy
+id, patientId, clinicId, doctorId?, substance, reaction?, severity UNKNOWN|MILD|MODERATE|SEVERE, recordedAt, retractedAt?, retractedReason?, retractedByDoctorId?, createdAt, updatedAt
+
+Attached to the **Patient**, not to a visit or a clinic: an allergy is a
+fact about the person and does not stop being true in a different building.
+`clinicId` and `doctorId` record where and by whom it was captured, for
+attribution — **not** to scope who may read it.
+
+**This is a deliberate widening of record access.** Consultation history is
+scoped to `doctorId: session.doctorId`; allergies are not. A doctor seeing
+a patient for the first time must see an allergy someone else recorded, or
+the record creates false confidence instead of safety. The read is
+authorised by the treating-clinician gate
+(`src/lib/records/loadTokenForDoctorRecord.ts` — a doctor, their own
+session, a token that has reached consult) and logged as a
+`RecordAccessEvent` like any other. Flag this to the privacy review.
+
+Never hard-deleted. A withdrawn allergy is retracted with a reason and
+stays: "recorded and later withdrawn" is clinically meaningful, and
+removing it would leave the next clinician unable to tell it had been there.
+
+`Patient.allergiesReviewedAt` / `allergiesReviewedByDoctorId` record that
+someone **asked**, independently of what was found. "No known allergies"
+and "nobody has asked" look identical in an empty list and are completely
+different clinical facts; without this column a blank panel reads as
+"cleared". Nothing is backfilled — every existing patient starts as NOT
+ASKED, which is the truth.
+
+Nothing in the product compares an allergy to a prescription. No
+interaction checking, no contraindication warning, no alerts. That is
+clinical decision support and the safety boundary puts it with the
+clinician. See `src/lib/records/allergies.ts`.
+
 ## RecordConsent
 id, patientId, doctorId, clinicId, tokenId?, grantedAt, revokedAt?, scope
 

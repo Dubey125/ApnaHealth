@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { loadTokenForDoctorRecord } from "@/lib/records/loadTokenForDoctorRecord";
 import { emptyToUndefined } from "@/lib/records/access";
 import { hasAnyVital, toStoredVitals, vitalsSchema } from "@/lib/records/vitals";
+import { allergyInputSchema, isDuplicateSubstance } from "@/lib/records/allergies";
 
 export interface RecordActionState {
   error?: string;
@@ -214,5 +215,203 @@ export async function correctVisitType(_prevState: RecordActionState, formData: 
 
   revalidatePath(`/app/queue/${clinicSession.id}/token/${token.id}/record`);
   revalidatePath(`/app/queue/${clinicSession.id}`);
+  return {};
+}
+
+// --- Allergies ---
+//
+// Clinician-authored, like consultation records: loadTokenForDoctorRecord
+// proves the caller is a doctor, on their own session, treating this
+// patient right now. Front-desk staff deliberately cannot record an
+// allergy — second-hand allergy data entered at a counter is a known
+// safety problem, and a wrong entry here is worse than an absent one.
+//
+// Nothing in any of these actions compares an allergy to a prescription.
+// See the note at the top of src/lib/records/allergies.ts.
+
+const tokenRefSchema = z.object({
+  sessionId: z.string().min(1),
+  tokenId: z.string().min(1),
+});
+
+const recordAllergySchema = allergyInputSchema.extend({
+  sessionId: z.string().min(1),
+  tokenId: z.string().min(1),
+});
+
+export async function recordPatientAllergy(
+  _prevState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  const parsed = recordAllergySchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    tokenId: formData.get("tokenId"),
+    substance: formData.get("substance"),
+    reaction: formData.get("reaction") ?? undefined,
+    severity: formData.get("severity") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the allergy details." };
+  }
+
+  const { session, clinicSession, token } = await loadTokenForDoctorRecord(parsed.data.sessionId, parsed.data.tokenId);
+  if (!token.patientId) {
+    return { error: "This visit has no linked patient account." };
+  }
+  const patientId = token.patientId;
+
+  const existing = await prisma.patientAllergy.findMany({ where: { patientId } });
+  if (isDuplicateSubstance(parsed.data.substance, existing)) {
+    return { error: `${parsed.data.substance.trim()} is already recorded for this patient.` };
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.patientAllergy.create({
+      data: {
+        patientId,
+        clinicId: clinicSession.clinicId,
+        doctorId: session.doctorId,
+        substance: parsed.data.substance,
+        reaction: parsed.data.reaction,
+        severity: parsed.data.severity,
+        recordedAt: now,
+      },
+    });
+
+    // Recording an allergy is itself evidence that someone asked, so the
+    // patient stops being "not asked" even if this is the only entry.
+    await tx.patient.update({
+      where: { id: patientId },
+      data: { allergiesReviewedAt: now, allergiesReviewedByDoctorId: session.doctorId },
+    });
+
+    await tx.recordAccessEvent.create({
+      data: {
+        patientId,
+        clinicId: clinicSession.clinicId,
+        doctorId: session.doctorId,
+        staffUserId: session.staffUserId,
+        action: "CREATE",
+        reason: "Allergy recorded",
+        occurredAt: now,
+      },
+    });
+  });
+
+  revalidatePath(`/app/queue/${clinicSession.id}/token/${token.id}/record`);
+  return {};
+}
+
+/**
+ * Record that allergies were asked about and none are known.
+ *
+ * A real clinical finding, not an absence of one — which is exactly why it
+ * needs its own action rather than being inferred from an empty list.
+ */
+export async function confirmNoKnownAllergies(
+  _prevState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  const parsed = tokenRefSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    tokenId: formData.get("tokenId"),
+  });
+  if (!parsed.success) return { error: "Invalid request." };
+
+  const { session, clinicSession, token } = await loadTokenForDoctorRecord(parsed.data.sessionId, parsed.data.tokenId);
+  if (!token.patientId) return { error: "This visit has no linked patient account." };
+  const patientId = token.patientId;
+
+  const active = await prisma.patientAllergy.count({ where: { patientId, retractedAt: null } });
+  if (active > 0) {
+    // Refusing rather than silently retracting: withdrawing a recorded
+    // allergy is a separate, deliberate act with its own reason.
+    return { error: "This patient has recorded allergies. Withdraw them individually if they no longer apply." };
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.patient.update({
+      where: { id: patientId },
+      data: { allergiesReviewedAt: now, allergiesReviewedByDoctorId: session.doctorId },
+    }),
+    prisma.recordAccessEvent.create({
+      data: {
+        patientId,
+        clinicId: clinicSession.clinicId,
+        doctorId: session.doctorId,
+        staffUserId: session.staffUserId,
+        action: "UPDATE",
+        reason: "No known allergies confirmed",
+        occurredAt: now,
+      },
+    }),
+  ]);
+
+  revalidatePath(`/app/queue/${clinicSession.id}/token/${token.id}/record`);
+  return {};
+}
+
+const retractAllergySchema = z.object({
+  sessionId: z.string().min(1),
+  tokenId: z.string().min(1),
+  allergyId: z.string().min(1),
+  reason: z.string().trim().min(3, "Give a short reason for withdrawing this allergy.").max(200),
+});
+
+/**
+ * Withdraw an allergy that no longer stands.
+ *
+ * Never a delete. The row is retracted with a reason and stays in the
+ * record — "this was recorded and later withdrawn" is clinically
+ * meaningful, and removing it would leave the next doctor unable to tell
+ * whether it had ever been there.
+ */
+export async function retractPatientAllergy(
+  _prevState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  const parsed = retractAllergySchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    tokenId: formData.get("tokenId"),
+    allergyId: formData.get("allergyId"),
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid request." };
+  }
+
+  const { session, clinicSession, token } = await loadTokenForDoctorRecord(parsed.data.sessionId, parsed.data.tokenId);
+  if (!token.patientId) return { error: "This visit has no linked patient account." };
+
+  const allergy = await prisma.patientAllergy.findUnique({ where: { id: parsed.data.allergyId } });
+  // Scoped to the patient being treated, so an allergy id belonging to
+  // another patient cannot be withdrawn by guessing it.
+  if (!allergy || allergy.patientId !== token.patientId) {
+    return { error: "Allergy not found for this patient." };
+  }
+  if (allergy.retractedAt) return { error: "This allergy has already been withdrawn." };
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.patientAllergy.update({
+      where: { id: allergy.id },
+      data: { retractedAt: now, retractedReason: parsed.data.reason, retractedByDoctorId: session.doctorId },
+    }),
+    prisma.recordAccessEvent.create({
+      data: {
+        patientId: token.patientId,
+        clinicId: clinicSession.clinicId,
+        doctorId: session.doctorId,
+        staffUserId: session.staffUserId,
+        action: "UPDATE",
+        reason: "Allergy withdrawn",
+        occurredAt: now,
+      },
+    }),
+  ]);
+
+  revalidatePath(`/app/queue/${clinicSession.id}/token/${token.id}/record`);
   return {};
 }
