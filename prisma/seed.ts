@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { PLAN_SEATS } from "../src/lib/billing/subscription";
 import { nanoid } from "nanoid";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -369,6 +370,8 @@ async function main() {
     await prisma.token.deleteMany({ where: { sessionId: { in: sessionIds } } });
     await prisma.session.deleteMany({ where: { clinicId: existingClinic.id } });
     await prisma.doctorVerification.deleteMany({ where: { doctorId: { in: doctorIds } } });
+    // Subscription and SubscriptionEvent cascade from Clinic, so they need
+    // no deleteMany of their own here.
     await prisma.clinic.delete({ where: { id: existingClinic.id } });
   }
 
@@ -395,6 +398,25 @@ async function main() {
       // until the review team approves them.
       approvalStatus: "APPROVED",
       approvalDecidedAt: new Date(),
+      // Every clinic created through /register gets a subscription in the
+      // same transaction, so a seeded one must have one too — otherwise
+      // development and CI run entirely on the fail-open path
+      // (UNBILLED_ENTITLEMENTS) and never exercise the billing code that
+      // production depends on.
+      //
+      // ACTIVE rather than TRIALING on purpose. A seeded trial would
+      // expire seven days later and quietly suspend every development
+      // database older than a week, turning "the demo clinic stopped
+      // taking bookings" into a mystery. The trial path is covered by unit
+      // tests and by actually registering a clinic.
+      subscription: {
+        create: {
+          plan: "STARTER",
+          status: "ACTIVE",
+          doctorSeats: PLAN_SEATS.STARTER,
+          currentPeriodStartAt: new Date(),
+        },
+      },
     },
   });
 
