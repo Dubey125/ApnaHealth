@@ -122,8 +122,14 @@ export function supersededFields(amendments: AmendmentRecord[]): Set<AmendableFi
   return superseded;
 }
 
-/** Oldest first: corrections read in the order they were made. */
-export function inOrder(amendments: AmendmentRecord[]): AmendmentRecord[] {
+/**
+ * Oldest first: corrections read in the order they were made.
+ *
+ * Generic, because a sort has no business narrowing its input. Callers
+ * pass rows that carry the amending doctor alongside, and pinning this to
+ * AmendmentRecord would strip that relation off the result.
+ */
+export function inOrder<T extends { amendedAt: Date }>(amendments: T[]): T[] {
   return [...amendments].sort((a, b) => a.amendedAt.getTime() - b.amendedAt.getTime());
 }
 

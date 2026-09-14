@@ -9,16 +9,36 @@ import { VerificationStatusBadge } from "@/components/ui/StatusBadge";
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
 import { PrintPrescriptionButton } from "@/app/app/queue/[sessionId]/token/[tokenId]/record/PrintPrescriptionButton";
 import { PrescriptionPrintView } from "@/components/records/PrescriptionPrintView";
+import { displayVitals } from "@/lib/records/vitals";
+import { displayMedicine } from "@/lib/records/prescription";
+import { amendedFields, inOrder } from "@/lib/records/amendments";
+import { AllergySummaryCard } from "@/components/records/AllergySummaryCard";
 
 export default async function PatientRecordsPage() {
   const session = await requirePatientSession();
 
-  const [patient, records] = await Promise.all([
+  const [patient, records, allergies] = await Promise.all([
     prisma.patient.findUniqueOrThrow({ where: { id: session.patientId } }),
     prisma.consultationRecord.findMany({
       where: { patientId: session.patientId },
-      include: { doctor: true, clinic: true },
+      include: {
+        doctor: true,
+        clinic: true,
+        // Structured medicines. Without these a patient sees NOTHING where
+        // their prescription should be: records written since medicines
+        // became rows leave prescriptionText null.
+        medicines: { orderBy: { position: "asc" } },
+        // Amendments matter more to the patient than to anyone. They may
+        // have acted on the original — taken a medicine, believed a
+        // diagnosis — and are the last person who should find out from
+        // somebody else that it was corrected.
+        amendments: { orderBy: { amendedAt: "asc" }, include: { doctor: { select: { name: true } } } },
+      },
       orderBy: { consultedAt: "desc" },
+    }),
+    prisma.patientAllergy.findMany({
+      where: { patientId: session.patientId },
+      orderBy: { recordedAt: "desc" },
     }),
   ]);
 
@@ -57,7 +77,7 @@ export default async function PatientRecordsPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                🇮🇳 ABDM-Ready Longitudinal Care Timeline
+                Your consultation history
               </span>
               <h2 className="text-xl font-bold text-foreground mt-1">{patient.name}&apos;s Health Record</h2>
               <p className="text-xs text-muted">
@@ -80,6 +100,8 @@ export default async function PatientRecordsPage() {
             </div>
           </div>
         </div>
+
+        <AllergySummaryCard allergies={allergies} reviewedAt={patient.allergiesReviewedAt} />
 
         {records.length === 0 ? (
           <EmptyState
@@ -115,6 +137,7 @@ export default async function PatientRecordsPage() {
                       clinicalAssessment: record.clinicalAssessment,
                       diagnosisText: record.diagnosisText,
                       prescriptionText: record.prescriptionText,
+                      medicines: record.medicines,
                       followUpInstructions: record.followUpInstructions,
                     }}
                   />
@@ -162,6 +185,22 @@ export default async function PatientRecordsPage() {
                         </div>
                       )}
 
+                      {displayVitals(record).length > 0 && (
+                        <div>
+                          <span className="font-bold text-muted block mb-0.5 uppercase tracking-wider text-[10px]">
+                            Vitals Recorded
+                          </span>
+                          <dl className="flex flex-wrap gap-x-5 gap-y-1 rounded border border-border bg-surface p-2.5">
+                            {displayVitals(record).map((vital) => (
+                              <div key={vital.key} className="flex items-baseline gap-1.5">
+                                <dt className="text-muted">{vital.label}</dt>
+                                <dd className="font-semibold tabular-nums text-foreground">{vital.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                      )}
+
                       {record.clinicalAssessment && (
                         <div>
                           <span className="font-bold text-muted block mb-0.5 uppercase tracking-wider text-[10px]">
@@ -173,7 +212,7 @@ export default async function PatientRecordsPage() {
                         </div>
                       )}
 
-                      {record.prescriptionText && (
+                      {(record.medicines.length > 0 || record.prescriptionText) && (
                         <div>
                           <div className="flex items-center gap-1 mb-1">
                             <span className="text-base font-serif font-bold text-primary italic">℞</span>
@@ -181,9 +220,27 @@ export default async function PatientRecordsPage() {
                               Prescribed Medications
                             </span>
                           </div>
-                          <div className="whitespace-pre-wrap font-mono text-xs bg-background p-3 rounded-lg border border-border text-foreground leading-relaxed">
-                            {record.prescriptionText}
-                          </div>
+                          {record.medicines.length > 0 ? (
+                            <ol className="flex flex-col gap-1.5 rounded-lg border border-border bg-background p-3">
+                              {record.medicines.map((medicine, index) => {
+                                const display = displayMedicine(medicine);
+                                return (
+                                  <li key={medicine.id} className="flex flex-wrap items-baseline gap-2">
+                                    <span className="tabular-nums text-muted">{index + 1}.</span>
+                                    <span className="font-semibold text-foreground">{display.name}</span>
+                                    {display.instructions && (
+                                      <span className="text-foreground">{display.instructions}</span>
+                                    )}
+                                    {display.notes && <span className="text-muted">{display.notes}</span>}
+                                  </li>
+                                );
+                              })}
+                            </ol>
+                          ) : (
+                            <div className="whitespace-pre-wrap font-mono text-xs bg-background p-3 rounded-lg border border-border text-foreground leading-relaxed">
+                              {record.prescriptionText}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -195,6 +252,36 @@ export default async function PatientRecordsPage() {
                           <p className="text-foreground bg-surface p-2 rounded border border-border">
                             {record.followUpInstructions}
                           </p>
+                        </div>
+                      )}
+
+                      {record.amendments.length > 0 && (
+                        <div className="flex flex-col gap-2 border-t border-border pt-2">
+                          <span className="font-bold text-warning uppercase tracking-wider text-[10px]">
+                            Corrections to this record ({record.amendments.length})
+                          </span>
+                          {/* The original above is left exactly as written and
+                              never hidden: the patient needs to see both what
+                              they were first told and what replaced it. */}
+                          {inOrder(record.amendments).map((amendment) => (
+                            <div key={amendment.id} className="rounded-lg border border-warning/40 bg-warning/5 p-2.5">
+                              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <span className="font-medium text-foreground">{amendment.reason}</span>
+                                <span className="text-[10px] text-muted">
+                                  {amendment.doctor.name} {formatClinicDate(amendment.amendedAt)}
+                                </span>
+                              </div>
+                              {amendedFields(amendment).map((field) => (
+                                <div key={field.field} className="mt-1">
+                                  <span className="text-[10px] uppercase tracking-wide text-muted">{field.label}</span>
+                                  <p className="whitespace-pre-wrap text-foreground">{field.value}</p>
+                                </div>
+                              ))}
+                              {amendment.note && (
+                                <p className="mt-1 whitespace-pre-wrap text-foreground">{amendment.note}</p>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
