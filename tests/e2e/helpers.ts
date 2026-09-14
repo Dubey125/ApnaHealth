@@ -38,6 +38,20 @@ export const SITE_ORIGIN = (process.env.SITE_URL ?? BASE_URL).replace(/\/$/, "")
 export const DEMO_PATIENT_PHONE = "9000000006";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+// End-to-end tests run ONE FILE AT A TIME (--test-concurrency=1 in the
+// test:e2e script).
+//
+// Node's test runner otherwise runs files in parallel, and each one opens
+// its own PrismaClient on top of the dev server's pool. Against a local
+// database that is free; against a remote one it exhausts the connection
+// limit and tests fail with "Can't reach database server" — in a different
+// file on every run, which reads like flakiness in the code rather than in
+// the harness.
+//
+// Serial execution also removes a real class of false failure: these tests
+// mutate shared rows (subscription status, scratch sessions), so two files
+// running at once can observe each other's half-finished state.
+
 export const prisma = new PrismaClient({ adapter });
 
 export interface PageResponse {

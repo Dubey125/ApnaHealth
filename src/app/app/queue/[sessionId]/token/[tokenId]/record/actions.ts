@@ -8,6 +8,7 @@ import { emptyToUndefined } from "@/lib/records/access";
 import { hasAnyVital, toStoredVitals, vitalsSchema } from "@/lib/records/vitals";
 import { allergyInputSchema, isDuplicateSubstance } from "@/lib/records/allergies";
 import { parseMedicines, withPositions } from "@/lib/records/prescription";
+import { amendmentSchema, canAmend } from "@/lib/records/amendments";
 
 export interface RecordActionState {
   error?: string;
@@ -434,6 +435,83 @@ export async function retractPatientAllergy(
         staffUserId: session.staffUserId,
         action: "UPDATE",
         reason: "Allergy withdrawn",
+        occurredAt: now,
+      },
+    }),
+  ]);
+
+  revalidatePath(`/app/queue/${clinicSession.id}/token/${token.id}/record`);
+  return {};
+}
+
+// --- Amendments ---
+//
+// NEVER OVERWRITE, ALWAYS APPEND. Nothing here updates the original
+// ConsultationRecord row; an amendment is an inserted statement alongside
+// it. See src/lib/records/amendments.ts for why.
+
+const amendRecordSchema = amendmentSchema.safeExtend({
+  sessionId: z.string().min(1),
+  tokenId: z.string().min(1),
+  recordId: z.string().min(1),
+});
+
+export async function amendConsultationRecord(
+  _prevState: RecordActionState,
+  formData: FormData,
+): Promise<RecordActionState> {
+  const parsed = amendRecordSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    tokenId: formData.get("tokenId"),
+    recordId: formData.get("recordId"),
+    reason: formData.get("reason"),
+    chiefComplaint: formData.get("chiefComplaint") ?? undefined,
+    clinicalAssessment: formData.get("clinicalAssessment") ?? undefined,
+    diagnosisText: formData.get("diagnosisText") ?? undefined,
+    followUpInstructions: formData.get("followUpInstructions") ?? undefined,
+    note: formData.get("note") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the amendment." };
+  }
+
+  const { session, clinicSession, token } = await loadTokenForDoctorRecord(parsed.data.sessionId, parsed.data.tokenId);
+
+  const record = await prisma.consultationRecord.findUnique({ where: { id: parsed.data.recordId } });
+  // Scoped to the token being viewed, so a record id belonging to another
+  // patient cannot be amended by guessing it.
+  if (!record || record.tokenId !== token.id) {
+    return { error: "Record not found for this visit." };
+  }
+  if (!canAmend(record.doctorId, session.doctorId)) {
+    // A different clinician who disagrees writes their own record. An
+    // amendment carries the authority of whoever made the original entry.
+    return { error: "Only the doctor who wrote this record can amend it." };
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.consultationRecordAmendment.create({
+      data: {
+        consultationRecordId: record.id,
+        doctorId: session.doctorId,
+        amendedAt: now,
+        reason: parsed.data.reason,
+        chiefComplaint: parsed.data.chiefComplaint,
+        clinicalAssessment: parsed.data.clinicalAssessment,
+        diagnosisText: parsed.data.diagnosisText,
+        followUpInstructions: parsed.data.followUpInstructions,
+        note: parsed.data.note,
+      },
+    }),
+    prisma.recordAccessEvent.create({
+      data: {
+        patientId: record.patientId,
+        clinicId: clinicSession.clinicId,
+        doctorId: session.doctorId,
+        staffUserId: session.staffUserId,
+        action: "UPDATE",
+        reason: "Consultation record amended",
         occurredAt: now,
       },
     }),

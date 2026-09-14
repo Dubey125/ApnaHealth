@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/Card";
 import { VitalsPanel } from "@/components/records/VitalsPanel";
 import { AllergyPanel } from "@/components/records/AllergyPanel";
 import { displayMedicine } from "@/lib/records/prescription";
+import { AmendmentPanel } from "@/components/records/AmendmentPanel";
+import { canAmend as canAmendRecord } from "@/lib/records/amendments";
 import { EMPTY_VITALS, trendPointsFrom } from "@/lib/records/vitals";
 import { VisitTypeCorrection } from "./VisitTypeCorrection";
 import { Badge } from "@/components/ui/Badge";
@@ -92,7 +94,10 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
   const [existingRecord, history, allergies] = await Promise.all([
     prisma.consultationRecord.findFirst({
       where: { tokenId: token.id },
-      include: { medicines: { orderBy: { position: "asc" } } },
+      include: {
+        medicines: { orderBy: { position: "asc" } },
+        amendments: { orderBy: { amendedAt: "asc" }, include: { doctor: { select: { name: true } } } },
+      },
     }),
     prisma.consultationRecord.findMany({
       where: { patientId: patient.id, doctorId: session.doctorId, NOT: { tokenId: token.id } },
@@ -228,6 +233,14 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
               <div className="flex items-center gap-2">
                 <span className="text-success text-base">✓</span>
                 <h2 className="text-base font-bold text-foreground">Completed Consultation Record</h2>
+                {existingRecord.amendments.length > 0 && (
+                  /* Stated at the top, because someone acting on this
+                     record needs to know it was corrected before they read
+                     the original values below. */
+                  <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning">
+                    Amended
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted">
@@ -290,6 +303,14 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
             {existingRecord.followUpInstructions && (
               <Field label="Advice & Follow-Up" value={existingRecord.followUpInstructions} />
             )}
+
+            <AmendmentPanel
+              sessionId={clinicSession.id}
+              tokenId={token.id}
+              recordId={existingRecord.id}
+              amendments={existingRecord.amendments}
+              canAmend={canAmendRecord(existingRecord.doctorId, session.doctorId)}
+            />
 
             <p className="border-t border-border pt-3 text-xs text-muted">
               🔒 This record is locked and safely recorded in the patient&apos;s longitudinal care timeline.

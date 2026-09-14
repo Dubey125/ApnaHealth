@@ -8,6 +8,12 @@
 - Patient and clinician access is role-controlled.
 - Public ticket pages show only the patient's queue status.
 
+Consultation records are never edited or deleted. A correction is an
+append-only amendment alongside the original, attributed and timestamped,
+and both stay readable — a record that could be silently rewritten would
+stop being evidence of what was written at the time. Only the record's
+author may amend it.
+
 Allergies are readable by any clinician currently treating the patient,
 not only the one who recorded them — a deliberate widening of record
 access, because an allergy only its author can see creates false

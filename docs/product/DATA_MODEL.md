@@ -126,6 +126,39 @@ Nothing in the product interprets these values. The stored bounds reject
 impossible data (a pulse of 1200 is a typo); judging a real reading is the
 clinician's decision, per the product safety boundary.
 
+## ConsultationRecordAmendment
+Append-only. id, consultationRecordId, doctorId, amendedAt, reason, chiefComplaint?, clinicalAssessment?, diagnosisText?, followUpInstructions?, note?, createdAt
+
+**Never overwrite, always append.** The original `ConsultationRecord` row
+is never altered and never deleted; an amendment is a separately attributed
+statement alongside it, and both stay readable.
+
+A medical record is evidence of what a clinician believed at the time, on
+the information they had. If a later correction could quietly replace the
+original, nobody could tell afterwards what was written during the
+consultation — the question that matters most when care is reviewed, and
+the reason paper records are corrected with a dated, signed line rather
+than an eraser. Nothing in the product computes a merged "current" record;
+a reader sees the original, marked as amended, then each correction in
+order.
+
+Only fields the amender restated are non-null — an amendment that corrected
+a diagnosis says nothing about the chief complaint. `reason` is required:
+"corrected" is not a reason, and this is the only field that can tell a
+future reader why the record changed.
+
+`note` carries what the structured fields cannot. A prescription already
+printed and handed to a patient cannot be un-issued, so the honest
+correction is a note saying what it should have read.
+
+**Only the record's author may amend it** (`canAmend` in
+`src/lib/records/amendments.ts`). A different clinician who disagrees
+writes their own record — an amendment carries the authority of whoever
+made the original entry.
+
+The foreign key is RESTRICT, not CASCADE: a correction must not be
+removable by deleting what it corrects.
+
 ## PrescribedMedicine
 id, consultationRecordId, position, name, dosage?, timing?, duration?, notes?, createdAt
 

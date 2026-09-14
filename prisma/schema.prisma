@@ -313,6 +313,7 @@ model Doctor {
   recordedAllergies   PatientAllergy[]     @relation("PatientAllergyRecorder")
   retractedAllergies  PatientAllergy[]     @relation("PatientAllergyRetractor")
   reviewedAllergiesOf Patient[]            @relation("PatientAllergyReviewer")
+  recordAmendments    ConsultationRecordAmendment[] @relation("ConsultationRecordAmender")
   verifications       DoctorVerification[]
   consultationRecords ConsultationRecord[]
   recordConsents      RecordConsent[]
@@ -567,10 +568,62 @@ model ConsultationRecord {
   createdAt            DateTime @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @db.Timestamptz(3)
 
-  medicines PrescribedMedicine[]
+  medicines  PrescribedMedicine[]
+  amendments ConsultationRecordAmendment[]
 
   @@index([patientId, consultedAt])
   @@index([doctorId, consultedAt])
+}
+
+// A correction to a consultation record.
+//
+// Records were create-once and permanent, which left a doctor who typed
+// the wrong diagnosis stuck with it. The fix is not an edit button.
+//
+// NEVER OVERWRITE, ALWAYS APPEND. The original ConsultationRecord row is
+// never altered and never deleted; an amendment is a new, separately
+// attributed statement that sits alongside it, and both stay readable.
+//
+// A medical record is evidence of what a clinician believed at the time,
+// on the information they had. If a later correction could quietly replace
+// the original, nobody could tell afterwards what was actually written
+// during the consultation — which is precisely the question that matters
+// when care is reviewed, and the reason paper records are corrected with a
+// dated, signed line rather than an eraser.
+//
+// Only fields the amender restated are non-null. `note` covers what the
+// structured fields cannot: a prescription already printed and handed over
+// cannot be un-issued, so the honest correction is a note saying what it
+// should have read.
+//
+// Append-only in the same sense as QueueEvent and RecordAccessEvent: rows
+// are inserted, never updated or deleted.
+model ConsultationRecordAmendment {
+  id                   String             @id @default(cuid())
+  consultationRecordId String
+  consultationRecord   ConsultationRecord @relation(fields: [consultationRecordId], references: [id])
+
+  // Always the record's own author — a different clinician who disagrees
+  // writes their own record rather than restating someone else's. Enforced
+  // in canAmend (src/lib/records/amendments.ts) and in the action.
+  doctorId String
+  doctor   Doctor @relation("ConsultationRecordAmender", fields: [doctorId], references: [id])
+
+  amendedAt DateTime @db.Timestamptz(3)
+  // Required. "Corrected" is not a reason; whoever reads this in a year
+  // needs to know why the record changed, and this is the only field that
+  // can tell them.
+  reason    String
+
+  chiefComplaint       String?
+  clinicalAssessment   String?
+  diagnosisText        String?
+  followUpInstructions String?
+  note                 String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([consultationRecordId, amendedAt])
 }
 
 // One medicine on a prescription.
