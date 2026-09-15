@@ -229,7 +229,11 @@ Every line must be true before a real patient's data is entered.
       confirmed not to throttle Googlebot on the discovery pages
 - [ ] `SITE_URL` and `RESEND_API_KEY` set; boot warnings clear
 - [ ] `SESSION_SECRET` freshly generated for production, never reused
-- [ ] Migrations applied with `migrate deploy` from a trusted machine
+- [ ] Migrations applied with `migrate deploy` from a trusted machine, and
+      `npm run migrate:check` run against the production URL BEFORE and
+      AFTER — the code queries tables that only exist once they are applied,
+      so deploying ahead of them returns 500 on every page rather than
+      degrading a feature
 - [ ] Pilot clinic's facility and doctors entered through the product
 - [ ] Facility coordinates recorded (`npm run clinic:location -- --missing`)
 - [ ] CI green on the deployed commit

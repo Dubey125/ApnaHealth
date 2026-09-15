@@ -12,6 +12,7 @@
     "admin:create": "tsx scripts/create-admin.ts",
     "clinic:location": "tsx scripts/set-clinic-coordinates.ts",
     "restore:verify": "tsx scripts/verify-restore.ts",
+    "migrate:check": "tsx scripts/check-migrations.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

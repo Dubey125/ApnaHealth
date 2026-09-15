@@ -34,6 +34,30 @@ negation in `.gitignore`) and documents every variable name with no values.
 
 ## 3. Run migrations against production
 
+**Check first, and check again afterwards:**
+
+```
+DATABASE_URL="<production URL>" npm run migrate:check
+```
+
+Read-only. It applies nothing and prints no credentials. It exits non-zero
+if this checkout contains a migration the target database has not applied,
+listing which — and it also refuses on a migration that started and never
+finished, because a half-applied schema is worse than a missing one.
+
+This exists because of a near miss: every migration had been applied to
+the development database and none to production, while production ran a
+commit from before any of them. Deploying then would not have degraded a
+feature, it would have made every page return 500 — the code queries
+tables that did not exist there.
+
+`next build` deliberately does NOT run migrations. The build is proven to
+work against an unreachable database (`.github/workflows/ci.yml`), which is
+what stops a page quietly acquiring a build-time query. Keeping that means
+applying migrations stays a deliberate act, so the check above is what
+makes forgetting it loud instead of catastrophic.
+
+
 ```
 DATABASE_URL="<production URL>" npx prisma migrate deploy
 ```
