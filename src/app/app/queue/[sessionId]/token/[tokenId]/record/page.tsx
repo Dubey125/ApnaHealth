@@ -280,12 +280,18 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
               </div>
             </div>
 
+            {/* NOT read-only, even though the consultation record itself is
+                finished. An allergy belongs to the patient, not to this
+                note: a patient who mentions one after the record is saved
+                must still have it recorded, and the action already allows
+                it for any token that has reached consult. Locking the
+                panel here conflated the two and cost a clinician the only
+                moment they had the patient in front of them. */}
             <AllergyPanel
               sessionId={clinicSession.id}
               tokenId={token.id}
               allergies={allergies}
               reviewedAt={patient.allergiesReviewedAt}
-              readOnly
             />
 
             <VitalsPanel current={existingRecord} history={trendPointsFrom(history)} />

@@ -164,14 +164,11 @@ export function AllergyPanel({
   tokenId,
   allergies,
   reviewedAt,
-  readOnly = false,
 }: {
   sessionId: string;
   tokenId: string;
   allergies: AllergyRecord[];
   reviewedAt: Date | null;
-  /** A completed record is history; it is shown but not edited from here. */
-  readOnly?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
   const status = allergyStatus(allergies, reviewedAt);
@@ -188,18 +185,16 @@ export function AllergyPanel({
     <section className={`flex flex-col gap-3 rounded-xl border p-4 ${tone}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-xs font-bold uppercase tracking-wider text-muted">Allergies</h3>
-        {!readOnly && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
             {status !== "KNOWN" && <ConfirmNoneButton sessionId={sessionId} tokenId={tokenId} />}
             <button
               type="button"
               onClick={() => setAdding(true)}
               className="inline-flex h-8 items-center justify-center rounded-md border border-border px-3 text-xs font-medium text-foreground hover:bg-border/40"
-            >
-              Add allergy
-            </button>
-          </div>
-        )}
+          >
+            Add allergy
+          </button>
+        </div>
       </div>
 
       {status === "NOT_ASKED" && (
@@ -224,7 +219,7 @@ export function AllergyPanel({
                 <SeverityTag severity={allergy.severity} />
                 {allergy.reaction && <span className="text-xs text-muted">{allergy.reaction}</span>}
               </span>
-              {!readOnly && <RetractButton sessionId={sessionId} tokenId={tokenId} allergy={allergy} />}
+              <RetractButton sessionId={sessionId} tokenId={tokenId} allergy={allergy} />
             </li>
           ))}
         </ul>
