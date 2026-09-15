@@ -28,15 +28,6 @@ import { z } from "zod";
 // separate, deliberate approval — not to be quietly enabled because the
 // data finally lines up.
 
-/** A medicine as the prescriber entered it. */
-export interface PrescribedMedicineInput {
-  name: string;
-  dosage?: string;
-  timing?: string;
-  duration?: string;
-  notes?: string;
-}
-
 const optionalText = (max: number) =>
   z
     .string()
@@ -158,17 +149,4 @@ export function displayMedicine(medicine: {
     instructions: [medicine.dosage, medicine.timing, medicine.duration].filter(Boolean).join(" · "),
     notes: medicine.notes,
   };
-}
-
-/**
- * The legacy free-text prescription, for records written before medicines
- * were structured.
- *
- * Those records are deliberately NOT parsed into rows: splitting a
- * clinician's prescription text back into drugs and doses means guessing
- * at a prescription, and a wrong guess is a wrong drug in a medical
- * record. They keep their text and are shown as written.
- */
-export function hasStructuredMedicines(medicines: unknown[]): boolean {
-  return medicines.length > 0;
 }

@@ -49,10 +49,14 @@ Two related rules that engineering **has** honoured and must continue to:
 | Input validation | Zod on external input; photo URLs validated against protocol and host rules |
 | Security headers | Nonce-based CSP (no `'unsafe-inline'` for scripts), HSTS, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | Seed safety | Refuses any non-loopback host and any production `NODE_ENV` |
-| Tests | 241 unit + 58 end-to-end, run by CI on every push |
+| Tests | 349 unit + 89 end-to-end, run by CI on every push against a local Postgres |
 | Error reporting | Forwarded to a configured webhook, throttled, carrying no stack or patient data |
 | Backup verification | `npm run restore:verify`, with a rehearsal procedure that has been performed |
 | Deploy safety | Build no longer requires a reachable database |
+| Clinical records | Vitals, allergies and prescriptions are structured data, not prose; records are corrected by append-only amendment and never overwritten |
+| Allergy safety | Recorded per patient and shown to whichever clinician is treating them, with "not asked" distinguished from "none known" |
+| Billing | Subscription state, seat limits and Razorpay, with the rule that a lapsed payment never strands a patient already holding a token |
+| Theming | Light, dark and system, applied before first paint under the nonce CSP |
 
 ---
 
@@ -120,6 +124,33 @@ manually verified only. Playwright would close it, at the cost of a new
 dependency.
 
 ---
+
+### 3.7 Billing is live code — decide before charging
+
+`docs/product/BILLING.md` has the detail. Before a single rupee moves:
+
+- the Razorpay plan must be **49900 paise, monthly**, matching
+  `PLAN_PRICE_MINOR.STARTER` — a clinic quoted one number and charged
+  another is a dispute;
+- the webhook must be registered and reachable, or nothing ever marks a
+  clinic as paid (deliberately: a redirect back from a payment page is
+  never trusted);
+- **`/terms` and `/refunds` are engineering drafts and have not been
+  reviewed by a lawyer.** The no-refund-once-paid clause is the one most
+  likely to need changing — Indian consumer-protection law may override a
+  blanket refusal. Fold this into the privacy review below.
+
+### 3.8 Clinical-decision-support boundary — hold it
+
+Allergies and prescriptions are both structured now and sit on the same
+screen. The product deliberately does **not** compare them: no interaction
+checking, no contraindication warning, no matching a drug to a recorded
+substance. Tests in both modules fail if an exported function is even
+*named* for it.
+
+Enabling that comparison is a separate product with separate risk, and it
+needs deliberate approval — not to be switched on because the data finally
+lines up.
 
 ## 4. Operational readiness
 
@@ -202,6 +233,9 @@ Every line must be true before a real patient's data is entered.
 - [ ] Pilot clinic's facility and doctors entered through the product
 - [ ] Facility coordinates recorded (`npm run clinic:location -- --missing`)
 - [ ] CI green on the deployed commit
+- [ ] Razorpay plan created at 49900 paise monthly, webhook registered and
+      reachable, TEST keys everywhere but production
+- [ ] `/terms` and `/refunds` reviewed by a lawyer
 
 **Verified as understood, not just configured**
 - [ ] Someone other than the author has restored the backup

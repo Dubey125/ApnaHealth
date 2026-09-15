@@ -13,6 +13,7 @@ import { displayVitals } from "@/lib/records/vitals";
 import { displayMedicine } from "@/lib/records/prescription";
 import { amendedFields, inOrder } from "@/lib/records/amendments";
 import { AllergySummaryCard } from "@/components/records/AllergySummaryCard";
+import { activeAllergies } from "@/lib/records/allergies";
 
 export default async function PatientRecordsPage() {
   const session = await requirePatientSession();
@@ -138,6 +139,8 @@ export default async function PatientRecordsPage() {
                       diagnosisText: record.diagnosisText,
                       prescriptionText: record.prescriptionText,
                       medicines: record.medicines,
+                      vitals: record,
+                      allergies: activeAllergies(allergies),
                       followUpInstructions: record.followUpInstructions,
                     }}
                   />

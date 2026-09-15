@@ -17,9 +17,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const API = "https://api.razorpay.com/v1";
 
-/** ₹499 per month, in paise. Razorpay works only in the minor unit. */
+/** ₹499 per month, in paise. Razorpay works only in the minor unit.
+ *
+ * The currency itself is a property of the Razorpay plan, not of this
+ * codebase — declaring it here too would be a second place for it to
+ * drift from what is actually charged. */
 export const PRICE_MINOR = 49_900;
-export const CURRENCY = "INR";
 
 export interface RazorpayConfig {
   keyId: string;

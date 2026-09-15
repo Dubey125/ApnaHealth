@@ -10,7 +10,8 @@ import { VitalsPanel } from "@/components/records/VitalsPanel";
 import { AllergyPanel } from "@/components/records/AllergyPanel";
 import { displayMedicine } from "@/lib/records/prescription";
 import { AmendmentPanel } from "@/components/records/AmendmentPanel";
-import { canAmend as canAmendRecord } from "@/lib/records/amendments";
+import { canAmend as canAmendRecord, supersededFields } from "@/lib/records/amendments";
+import { activeAllergies } from "@/lib/records/allergies";
 import { EMPTY_VITALS, trendPointsFrom } from "@/lib/records/vitals";
 import { VisitTypeCorrection } from "./VisitTypeCorrection";
 import { Badge } from "@/components/ui/Badge";
@@ -32,10 +33,33 @@ function ageInYears(dob: Date, now: Date): number {
   return age;
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({
+  label,
+  value,
+  superseded = false,
+}: {
+  label: string;
+  value: string;
+  /**
+   * A later amendment restated this field.
+   *
+   * MARKED, never hidden. A reader must still see what was written at the
+   * time — that is what makes the record evidence — but without this they
+   * could act on a value the record itself no longer stands behind, having
+   * scrolled straight past the "Amended" badge at the top.
+   */
+  superseded?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs font-bold uppercase tracking-wider text-muted">{label}</span>
+      <span className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted">
+        {label}
+        {superseded && (
+          <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-warning">
+            Corrected below
+          </span>
+        )}
+      </span>
       <span className="whitespace-pre-wrap text-sm text-foreground bg-background p-3 rounded-lg border border-border">
         {value}
       </span>
@@ -130,6 +154,10 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
     },
   });
 
+  // Which original values a later amendment has restated. Used to MARK
+  // them, never to hide them: a reader must still see what was written
+  // at the time, or the record stops being evidence of it.
+  const superseded = supersededFields(existingRecord?.amendments ?? []);
   const lastVisit = history[0] ?? null;
   const visitNumber = history.length + 1;
   const patientAge = patient.dateOfBirth
@@ -162,6 +190,8 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
             diagnosisText: existingRecord.diagnosisText,
             prescriptionText: existingRecord.prescriptionText,
             medicines: existingRecord.medicines,
+            vitals: existingRecord,
+            allergies: activeAllergies(allergies),
             followUpInstructions: existingRecord.followUpInstructions,
           }}
         />
@@ -260,15 +290,31 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
 
             <VitalsPanel current={existingRecord} history={trendPointsFrom(history)} />
 
-            {existingRecord.chiefComplaint && <Field label="Chief Complaints" value={existingRecord.chiefComplaint} />}
+            {existingRecord.chiefComplaint && (
+              <Field
+                label="Chief Complaints"
+                value={existingRecord.chiefComplaint}
+                superseded={superseded.has("chiefComplaint")}
+              />
+            )}
             {existingRecord.clinicalAssessment && (
               /* No longer "& Vitals": those are their own columns now, and
                  a label promising them here would be wrong for every record
                  written since. Records written BEFORE that change still
                  carry their vitals in this text, deliberately unparsed. */
-              <Field label="Clinical Assessment" value={existingRecord.clinicalAssessment} />
+              <Field
+                label="Clinical Assessment"
+                value={existingRecord.clinicalAssessment}
+                superseded={superseded.has("clinicalAssessment")}
+              />
             )}
-            {existingRecord.diagnosisText && <Field label="Diagnosis" value={existingRecord.diagnosisText} />}
+            {existingRecord.diagnosisText && (
+              <Field
+                label="Diagnosis"
+                value={existingRecord.diagnosisText}
+                superseded={superseded.has("diagnosisText")}
+              />
+            )}
             {(existingRecord.medicines.length > 0 || existingRecord.prescriptionText) && (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-1.5">
@@ -301,7 +347,11 @@ export default async function ConsultationRecordPage({ params }: RecordPageProps
               </div>
             )}
             {existingRecord.followUpInstructions && (
-              <Field label="Advice & Follow-Up" value={existingRecord.followUpInstructions} />
+              <Field
+                label="Advice & Follow-Up"
+                value={existingRecord.followUpInstructions}
+                superseded={superseded.has("followUpInstructions")}
+              />
             )}
 
             <AmendmentPanel

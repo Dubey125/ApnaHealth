@@ -1,6 +1,7 @@
 "use client";
 
 import { formatClinicDate, formatClinicTime } from "@/lib/format";
+import { displayVitals } from "@/lib/records/vitals";
 
 export interface PrescriptionData {
   doctorName: string;
@@ -18,6 +19,31 @@ export interface PrescriptionData {
   patientPhone?: string | null;
   tokenNumber?: number | null;
   consultedAt: Date | string;
+  /**
+   * Vitals, from their own columns.
+   *
+   * These used to reach the printed sheet by accident: the form stringified
+   * them into clinicalAssessment, so they printed as part of "Clinical
+   * Findings". Structuring them removed them from the page entirely — a
+   * printed prescription with no blood pressure or weight, which is not
+   * what a patient should be handed.
+   */
+  vitals?: {
+    bloodPressureSystolic: number | null;
+    bloodPressureDiastolic: number | null;
+    pulseBpm: number | null;
+    temperatureF: number | null;
+    spo2Percent: number | null;
+    weightKg: number | null;
+  } | null;
+  /**
+   * Allergies that stand at the time of printing.
+   *
+   * On the sheet because this is the page a patient shows at a pharmacy
+   * counter, and to a clinician who has never seen them. Printed as
+   * recorded — nothing here is compared against the prescription above it.
+   */
+  allergies?: { id: string; substance: string }[];
   chiefComplaint?: string | null;
   clinicalAssessment?: string | null;
   diagnosisText?: string | null;
@@ -36,6 +62,7 @@ export interface PrescriptionData {
 
 export function PrescriptionPrintView({ data }: { data: PrescriptionData }) {
   const consultDate = typeof data.consultedAt === "string" ? new Date(data.consultedAt) : data.consultedAt;
+  const vitalRows = data.vitals ? displayVitals(data.vitals) : [];
 
   return (
     <div className="printable-prescription hidden print:block text-black bg-white p-6 max-w-3xl mx-auto font-sans leading-relaxed">
@@ -88,6 +115,23 @@ export function PrescriptionPrintView({ data }: { data: PrescriptionData }) {
 
       {/* Clinical Notes & Diagnosis */}
       <div className="space-y-4 mb-6">
+        {data.allergies && data.allergies.length > 0 && (
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-red-800 block mb-1">Allergies:</span>
+            <p className="text-sm font-semibold text-gray-900 bg-red-50 p-2 rounded border border-red-300">
+              {data.allergies.map((allergy) => allergy.substance).join(", ")}
+            </p>
+          </div>
+        )}
+
+        {vitalRows.length > 0 && (
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-teal-900 block mb-1">Vitals:</span>
+            <p className="text-sm text-gray-800 bg-slate-50/50 p-2 rounded border border-slate-200">
+              {vitalRows.map((vital) => `${vital.label} ${vital.value}`).join("   ")}
+            </p>
+          </div>
+        )}
         {data.chiefComplaint && (
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-teal-900 block mb-1">Chief Complaints / History:</span>

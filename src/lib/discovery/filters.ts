@@ -28,11 +28,6 @@ export interface DiscoveryFilters {
   minExperienceYears: number | null;
 }
 
-export const EMPTY_FILTERS: DiscoveryFilters = {
-  availableToday: false,
-  maxFeeRupees: null,
-  minExperienceYears: null,
-};
 
 function parseBounded(raw: string | undefined, max: number): number | null {
   const value = Number(raw);

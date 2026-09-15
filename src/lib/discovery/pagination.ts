@@ -7,10 +7,13 @@ import { buildChipHref, type RawSearchParams } from "./searchParams";
 // given, and the result sets are small enough that a large OFFSET is not
 // the problem it becomes at millions of rows. Revisit if it ever is.
 
+// How many numbered page links surround the current one. Module-private:
+// nothing outside this file needs it, and exporting it invited the
+// assumption that a caller could change the shape of the pager.
+const PAGE_LINK_WINDOW = 2;
+
 export const PAGE_SIZE = 12;
 
-/** How many numbered links flank the current page before it elides. */
-export const PAGE_LINK_WINDOW = 2;
 
 /**
  * A page number from a query parameter. Anything unparseable, zero,

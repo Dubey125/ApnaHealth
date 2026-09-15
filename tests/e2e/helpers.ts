@@ -37,7 +37,32 @@ export const SITE_ORIGIN = (process.env.SITE_URL ?? BASE_URL).replace(/\/$/, "")
 /** The phone the seed gives its demo patient. */
 export const DEMO_PATIENT_PHONE = "9000000006";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+// max: 2, not the pg default of 10.
+//
+// These tests issue one query at a time, so a large pool buys nothing
+// and costs a lot: ten connections per test file, on top of the dev
+// server's twenty, is what exhausted a remote database's limit and
+// produced "Can't reach database server" in a different file on every
+// run — failures that read like flaky code but were the harness.
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 2 });
+// WHERE THIS SUITE IS TRUSTWORTHY
+//
+// CI is the authoritative run: it starts a Postgres service container on
+// localhost and a production build, so every query is sub-millisecond and
+// every route is already compiled.
+//
+// Run locally against a REMOTE database and it is not a reliable signal.
+// The dev server compiles routes on first request while the suite issues
+// hundreds of queries across an ocean, and individual tests intermittently
+// exceed their timeout — a full run has been observed passing 89/89 twice
+// and then losing one unrelated test to a 24-second response. Those
+// failures are latency, not defects, and no amount of retrying would make
+// them mean anything.
+//
+// If you want a local run you can trust, point DATABASE_URL at a local
+// Postgres. Retries are deliberately NOT used here: a test that passes on
+// the second attempt hides exactly the bugs this suite exists to catch.
+
 // End-to-end tests run ONE FILE AT A TIME (--test-concurrency=1 in the
 // test:e2e script).
 //

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   MAX_MEDICINES,
   displayMedicine,
-  hasStructuredMedicines,
   parseMedicines,
   withPositions,
 } from "./prescription";
@@ -124,13 +123,6 @@ test("a partial instruction line omits only the missing part", () => {
   assert.equal(display.instructions, "1-0-1 · 30 days");
 });
 
-test("legacy text-only records are distinguishable from structured ones", () => {
-  // Records written before this change keep their prescription text and
-  // are shown as written — parsing prose back into drugs and doses means
-  // guessing at a prescription.
-  assert.equal(hasStructuredMedicines([]), false);
-  assert.equal(hasStructuredMedicines([{ name: "Amoxicillin" }]), true);
-});
 
 // --- The boundary ---
 
@@ -138,7 +130,7 @@ test("nothing here checks a medicine against anything", () => {
   // Allergies and medicines are both structured now and sit on the same
   // screen. Comparing them is clinical decision support and needs its own
   // approval — not to be quietly enabled because the data lines up.
-  const surface = { parseMedicines, withPositions, displayMedicine, hasStructuredMedicines };
+  const surface = { parseMedicines, withPositions, displayMedicine };
   for (const name of Object.keys(surface)) {
     assert.ok(
       !/interact|allerg|contraind|warn|alert|check|validate.*dose/i.test(name),
